@@ -6,259 +6,203 @@ Description: All functions neeeded for the WALLABY hires test & deploy pipelines
 """
 
 import concurrent.futures
-import configparser
-import copy
 import csv
+import hashlib
 import io
-import logging
+import json
+from typing import Optional
 
 # Importing required modules
 import os
+import re
 import tarfile
 import urllib
 import urllib.request
+from urllib.parse import parse_qs, unquote, urlparse
 
-import pandas as pd
-import requests
-from astropy.table import Table
-from astroquery.casda import Casda
-from astroquery.utils.tap.core import TapPlus
+PRESTAGE_INPUTS_DIR = "inputs"
 
-logging.basicConfig()
-logging.getLogger().setLevel(logging.INFO)
+# Suffix to append to evaluation_file for linmos primary beam path (inside extracted tar)
+EVALUATION_FILE_PATH_SUFFIX = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
 
 
-def process_data(
-    credentials: str,
-    input_csv: str,
-    catalogue_name: str,
-    timeout_seconds: int,
-    project_code: str,
-):
+def _download_url_to_path(url: str, path: str, timeout: int = 300) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        with open(path, "wb") as f:
+            f.write(r.read())
+    print(f"Downloaded {url} -> {path}")
+
+
+# def _verify_checksum(filepath: str, checksum_url: str, timeout: int = 300) -> None:
+#     """
+#     Fetch CASDA checksum file and verify downloaded file via MD5.
+#     Checksum format: md5_hex (32 hex chars) typically as first field, e.g. "md5hash  filename".
+#     Uses chunked reading to avoid loading large files into memory.
+#     """
+#     if not checksum_url or not checksum_url.strip():
+#         return
+#     with urllib.request.urlopen(checksum_url, timeout=timeout) as r:
+#         content = r.read().decode("utf-8").strip()
+#     parts = content.split()
+#     if not parts:
+#         raise ValueError(f"Invalid checksum format: {content[:80]}")
+#     expected_md5 = parts[0].lower()
+#     hasher = hashlib.md5()
+#     with open(filepath, "rb") as f:
+#         for chunk in iter(lambda: f.read(1 << 20), b""):
+#             hasher.update(chunk)
+#     actual_md5 = hasher.hexdigest().lower()
+#     if actual_md5 != expected_md5:
+#         raise ValueError(
+#             f"Checksum mismatch for {os.path.basename(filepath)}: "
+#             f"expected {expected_md5}, got {actual_md5}"
+#         )
+#     print(f"Checksum verified: {os.path.basename(filepath)}")
+
+
+def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
     """
-    Processes an input catalogue of unprocessed sources to retrieve relevant data, and
-    saves the processed details to a CSV file 'hipass_ms_file_details.csv' in the
-    working directory.
+    Flatten manifest sources[].sbids[].datasets[] into a list of dataset rows.
+    Each row has name, ra_string, dec_string, vsys, evaluation_file, staged_url,
+    checksum_url, evaluation_file_url, evaluation_file_checksum_url.
+    """
+    rows = []
+    sources = manifest.get("sources") or []
+    for src in sources:
+        if not isinstance(src, dict):
+            continue
+        ra = src.get("ra_string") or ""
+        dec = src.get("dec_string") or ""
+        vsys = src.get("vsys")
+        for sbid_group in src.get("sbids") or []:
+            if not isinstance(sbid_group, dict):
+                continue
+            evaluation_file = sbid_group.get("evaluation_file") or ""
+            evaluation_file_url = sbid_group.get("evaluation_file_url") or ""
+            evaluation_file_checksum_url = sbid_group.get("evaluation_file_checksum_url") or ""
+            for ds in sbid_group.get("datasets") or []:
+                if not isinstance(ds, dict):
+                    continue
+                name = ds.get("name") or ds.get("dataset_id") or ""
+                rows.append({
+                    "name": name,
+                    "ra_string": ra or ds.get("ra_string") or "",
+                    "dec_string": dec or ds.get("dec_string") or "",
+                    "vsys": vsys if vsys is not None else ds.get("vsys"),
+                    "evaluation_file": evaluation_file,
+                    "staged_url": ds.get("staged_url") or "",
+                    "checksum_url": ds.get("checksum_url") or "",
+                    "evaluation_file_url": evaluation_file_url,
+                    "evaluation_file_checksum_url": evaluation_file_checksum_url,
+                })
+    return rows
 
-    Parameters
-    ----------
-    credentials:
-        Path to the CASDA credentials file.
-    input_csv:
-        Path to the input CSV file with source names.
-    catalogue_name:
-        Path to the catalogue of already processed sources.
-    timeout_seconds:
-        Timeout setting in seconds for download operations.
-    project_code:
-        Code of the project.
+
+def _build_csv_string_from_dataset_rows(rows: list) -> str:
+    """
+    Build CSV string with header Name,RA_string,Dec_string,Vsys,,evaluation_file_path
+    so process_CSV_str (column index 5 = evaluation_file_path) and process_CSV_mosaic_str
+    get expected format. Column 5 is the path to the primary beam FITS inside the tar,
+    matching original process_data/process_SOURCE output.
+    Uses csv.writer for correct escaping of commas in values.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Name", "RA_string", "Dec_string", "Vsys", "", "evaluation_file"])
+    for r in rows:
+        vsys = r.get("vsys")
+        vsys_str = "" if vsys is None else str(vsys)
+        eval_file = r.get("evaluation_file", "")
+        # Match original: evaluation_file_path = evaluation_file.replace(".tar", f"/{suffix}")
+        eval_file_path = (
+            eval_file.replace(".tar", f"/{EVALUATION_FILE_PATH_SUFFIX}")
+            if eval_file
+            else ""
+        )
+        writer.writerow([
+            r.get("name", ""),
+            r.get("ra_string", ""),
+            r.get("dec_string", ""),
+            vsys_str,
+            "",
+            eval_file_path,
+        ])
+    return buf.getvalue()
+
+
+def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
+    """
+    Parse manifest JSON; download only credentials (casda.ini); build csv_string and
+    URL lists from sources/datasets. Returns 4-tuple for manifest-driven pipeline.
+
+    Manifest format (preferred): inputs.credentials_ini_url; sources[] (nested) or
+    datasets[] (flat). See wallaby-hires-beampipe/manifest_schema.md.
+
+    Legacy: if sources/datasets absent, uses inputs.input_csv_url (content as csv_string)
+    and staged.ms_urls / staged.eval_urls.
 
     Returns
     -------
-    None
+    tuple[str, str, str, str]
+        (credentials_path, csv_string, ms_urls_json, eval_urls_json)
     """
+    manifest = json.loads(manifest_bytes.decode("utf-8"))
+    inputs = manifest.get("inputs") or {}
+    staged = manifest.get("staged") or {}
 
-    # Read credentials from the provided file
-    parser = configparser.ConfigParser()
-    parser.read(credentials)
-    # username = parser["CASDA"]["username"]
-    # password = parser["CASDA"]["password"]
+    cred_url = inputs.get("credentials_ini_url") or inputs.get("casda_ini_url") or ""
+    base = os.path.join(os.getcwd(), PRESTAGE_INPUTS_DIR)
+    credentials_path = os.path.join(base, "casda.ini")
+    if cred_url:
+        _download_url_to_path(cred_url, credentials_path)
 
-    # Initialize CASDA instance
-    casda = Casda(parser["CASDA"]["username"], parser["CASDA"]["password"])
+    rows = _flatten_sources_to_dataset_rows(manifest)
+    if rows:
+        csv_string = _build_csv_string_from_dataset_rows(rows)
+        ms_urls = [
+            {"url": r["staged_url"], "checksum_url": r.get("checksum_url") or ""}
+            for r in rows
+            if r.get("staged_url")
+        ]
+        seen_eval: set[str] = set()
+        eval_urls = []
+        for r in rows:
+            url = r.get("evaluation_file_url") or ""
+            if url and url not in seen_eval:
+                seen_eval.add(url)
+                eval_urls.append({
+                    "url": url,
+                    "checksum_url": r.get("evaluation_file_checksum_url") or "",
+                })
+    else:
+        # Legacy: download input_csv and use its content; use staged URL lists
+        raw_ms = staged.get("ms_urls") or staged.get("ms") or []
+        raw_eval = staged.get("eval_urls") or staged.get("eval") or []
+        ms_urls = [
+            {"url": u, "checksum_url": ""}
+            for u in raw_ms
+            if isinstance(u, str) and not u.endswith("checksum")
+        ]
+        eval_urls = [
+            {"url": u, "checksum_url": ""} if isinstance(u, str) else u
+            for u in raw_eval
+        ]
+        input_csv_url = inputs.get("input_csv_url") or ""
+        if input_csv_url:
+            input_csv_path = os.path.join(base, "input.csv")
+            _download_url_to_path(input_csv_url, input_csv_path)
+            with open(input_csv_path, "r", encoding="utf-8") as f:
+                csv_string = f.read()
+        else:
+            csv_string = "Name,RA_string,Dec_string,Vsys,,evaluation_file\n"
 
-    # Prepare a list to store the output rows for .ms files
-    output_data = []
-
-    # Load the processed catalogue to check for already processed sources
-    processed_catalogue = pd.read_csv(catalogue_name)
-    processed_sources = set(processed_catalogue["Name"])
-
-    with open(input_csv, mode="r") as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-
-        # For every row i.e. HIPASS source
-        for row in csv_reader:
-            name = row["Name"]
-
-            # Check if the source has already been processed
-            if name in processed_sources:
-                print(f"{name} already processed")
-                continue  # Skip to the next row if the source is processed
-
-            print(f"Querying for: {name}")
-
-            sbid_visibility_dict: dict = {}
-            res = tap_query_filename_visibility(name)
-
-            obs_id_list = list(res["obs_id"])
-            obs_id_list = [str(item) for item in obs_id_list]
-
-            visibility_list = list(res["filename"])
-            visibility_list = [str(item) for item in visibility_list]
-
-            for obs_id, visibility in zip(obs_id_list, visibility_list):
-                sbid_visibility_dict.setdefault(obs_id, []).append(visibility)
-
-            # Update the same dictionary by modifying keys
-            sbid_visibility_dict = {
-                key.replace("ASKAP-", ""): value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Initialize the dictionary to store results
-            sbid_evaluation_dict = {}
-
-            # Extract unique SBIDs from sbid_visibility_dict
-            unique_sbid_set = sbid_visibility_dict.keys()
-
-            for sbid in unique_sbid_set:
-                # Run the TAP query for the current SBID
-                res = tap_query_sbid_evaluation(sbid)
-
-                # Check if the result is not empty
-                if len(res) > 0:
-                    # Convert the result to an Astropy Table for easier processing
-                    table = Table(res)
-
-                    # Ensure the necessary columns exist
-                    if "filename" in table.colnames and "filesize" in table.colnames:
-                        # Find the row with the largest filesize
-                        largest_file_row = table[table["filesize"].argmax()]
-                        filename = largest_file_row["filename"]  # Get the filename
-                    else:
-                        filename = None  # If columns are missing, set to None
-                else:
-                    filename = None  # If query result is empty, set to None
-
-                # Add the SBID and its corresponding filename to the dictionary
-                sbid_evaluation_dict[sbid] = filename
-
-            # Convert np.str_ values to plain strings in sbid_evaluation_dict
-            sbid_evaluation_dict = {
-                key: str(value) for key, value in sbid_evaluation_dict.items()
-            }
-
-            # Print the two dictionaries
-            # Print sbid_visibility_dict
-            print("sbid_visibility_dict:")
-            print(sbid_visibility_dict)
-
-            # Print sbid_evaluation_dict
-            print("sbid_evaluation_dict:")
-            print(sbid_evaluation_dict)
-
-            # Creating a new vis, eval dict based on the above two dictionaries
-            vis_eval_dict = {
-                sbid_evaluation_dict[key]: value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Print vis_eval_dict
-            print("vis_eval_dict:")
-            print(vis_eval_dict)
-
-            # Rename the values of the dict accordingly
-            # Make a deep copy of the dictionary
-            updated_vis_eval_dict = copy.deepcopy(vis_eval_dict)
-
-            # Dictionary to track the occurrence of filenames
-            occurrence_count: dict = {}
-
-            # Iterate through the copy and rename duplicates
-            for key, file_list in updated_vis_eval_dict.items():
-                for i, filename in enumerate(file_list):
-                    # If the filename has been seen before
-                    if filename in occurrence_count:
-                        occurrence_count[filename] += 1  # Increment the occurrence count
-                        # Rename the file by appending _N
-                        name_parts = filename.split(".ms.tar")  # Split to add suffix
-                        new_name = f"{name_parts[0]}_{occurrence_count[filename]}.ms.tar"
-                        file_list[i] = new_name  # Replace with the new name
-                    else:
-                        # If first occurrence, initialise count
-                        occurrence_count[filename] = 1
-
-            # Print updated_vis_eval_dict
-            print("updated_vis_eval_dict:")
-            print(updated_vis_eval_dict)
-
-            # Get RA, DEC, and Vsys from the query
-            res = tap_query_RA_DEC_VSYS(name)
-
-            # Assuming res returns a DataFrame with the required values, extract them
-            if not res or len(res) == 0:
-                print(f"No results found for {name}. Skipping...")
-                continue
-
-            ra = res["RAJ2000"][0]
-            dec = res["DEJ2000"][0]
-            vsys = res["VSys"][0]
-            print(f"Retrieved RA={ra}, DEC={dec}, VSys={vsys} for {name}")
-
-            # Convert RA and DEC from degrees to hms and dms formats
-            ra_h, ra_m, ra_s = degrees_to_hms(ra)
-            dec_d, dec_m, dec_s = degrees_to_dms(dec)
-            print(
-                f"Converted RA={ra_h}h {ra_m}m {ra_s:.2f}s, \
-                DEC={dec_d}° {dec_m}′ {dec_s:.2f}″ for {name}"
-            )
-
-            # Get filenames
-            res = tap_query(name)
-            _ = casda.stage_data(res, verbose=True)
-            print(f"Staging data URLs for {name}")
-
-            files = res["filename"]
-
-            # Dictionary to keep track of duplicate counts for each file
-            filename_counts: dict = {}
-            for file in files:
-                # Remove the .tar extension from the filename
-                file_no_tar = file.replace(".ms.tar", "")
-
-                # Check if the filename already exists in the dictionary
-                if file_no_tar in filename_counts:
-                    # Increment the counter for this filename
-                    filename_counts[file_no_tar] += 1
-                    # Insert the counter before the .ms suffix
-                    new_filename = f"{file_no_tar}_{filename_counts[file_no_tar]}"
-                else:
-                    # First occurrence of the filename, set counter to 1
-                    filename_counts[file_no_tar] = 1
-                    # Keep the original filename on the first occurrence
-                    new_filename = file_no_tar
-
-                print(f"File {new_filename} added to i/p for pipeline part B")
-                output_data.append(
-                    [
-                        new_filename,
-                        f"{ra_h}: {ra_m}: {ra_s:.2f}",
-                        f"{dec_d}: {dec_m}: {dec_s:.2f}",
-                        vsys,
-                    ]
-                )
-
-    # Creates a df with with filename, RA, DEC and System Velocity
-    output_df = pd.DataFrame(output_data, columns=["Name", "RA", "DEC", "Vsys"])
-
-    # Add an additional column i.e. the evaluation file
-    # Apply the function to create the new column
-    output_df["evaluation_file"] = output_df["Name"].apply(
-        find_evaluation_file, args=(updated_vis_eval_dict,)
+    return (
+        credentials_path,
+        csv_string,
+        json.dumps(ms_urls),
+        json.dumps(eval_urls),
     )
-
-    # Define the suffix to append to evaluation_file for creating evaluation_file_path
-    suffix = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
-
-    # Create a new column evaluation_file_path by combining evaluation_file with suffix
-    output_df["evaluation_file_path"] = output_df["evaluation_file"].apply(
-        lambda x: x.replace(".tar", f"/{suffix}") if pd.notnull(x) else None
-    )
-
-    output_csv = os.path.join(".", "hipass_ms_file_details.csv")
-    output_df.to_csv(output_csv, index=False, header=True)
-    print(f"Output saved to {output_csv}")
 
 
 # Updated read_and_process which also includes the evaluation file locations
@@ -388,42 +332,20 @@ def parset_mixing(static_parset: dict, dynamic_parset: list, prefix: str = "") -
     return serialp.encode("utf-8")
 
 
-# HIPASS query with filename pattern
-HIPASS_QUERY_FILENAME = "SELECT * FROM ivoa.obscore WHERE " "filename LIKE '$filename%'"
-
-
-# TAP Query function
-def tap_query(filename: str) -> Table:
-    """
-    Queries the CASDA TAP service for a given filename.
-
-    Parameters
-    ----------
-    filename: The name of the file to query.
-
-    Returns
-    -------
-        Table with query result (files to download).
-    """
-
-    query = HIPASS_QUERY_FILENAME.replace("$filename", filename)
-    # print(f"TAP Query: {query}")
-
-    casdatap = TapPlus(url="https://casda.csiro.au/casda_vo_tools/tap", verbose=False)
-    job = casdatap.launch_job_async(query)
-    res = job.get_results()
-    # print(f"Query result: {res}")
-    return res
-
-
 # Code to download files from casda
 def download_file(
-    url: str, check_exists: bool, output: str, timeout: int, buffer=4194304
+    url: str,
+    check_exists: bool,
+    output: str,
+    timeout: int,
+    buffer: int = 4194304,
+    checksum_url: Optional[str] = None,
 ) -> str:
     """
     Downloads a file from the specified URL to the given output directory.
     If a file with the same name already exists, it increments a counter in
     the filename to avoid overwriting.
+    If checksum_url is provided, verifies the downloaded file via CASDA SHA-1 checksum.
 
     Parameters
     ----------
@@ -438,6 +360,8 @@ def download_file(
         Maximum time in seconds to wait for a server response.
     buffer:
         Buffer size for reading data in chunks during download (default is 4MB).
+    checksum_url:
+        Optional URL to CASDA .checksum file for SHA-1 verification after download.
 
     Returns
     -------
@@ -457,6 +381,15 @@ def download_file(
 
     with urllib.request.urlopen(url, timeout=timeout) as r:
         filename = r.info().get_filename()
+        if not filename:
+            parsed = urlparse(url)
+            for val in parse_qs(parsed.query).get("response-content-disposition", []):
+                m = re.search(r'filename="?([^";]+)"?', val)
+                if m:
+                    filename = unquote(m.group(1))
+                    break
+            if not filename:
+                filename = os.path.basename(parsed.path.rstrip("/")) or "download"
         filepath = f"{output}/{filename}"
 
         # Check if file already exists, and modify the filename if necessary
@@ -479,7 +412,7 @@ def download_file(
                 file_size = os.path.getsize(filepath)
                 if file_size == http_size:
                     print(f"File exists, ignoring: {os.path.basename(filepath)}")
-                    # File exists and is same size; do nothing
+                    # _verify_checksum(filepath, checksum_url or "", timeout)
                     return filepath
             except FileNotFoundError:
                 pass
@@ -501,6 +434,7 @@ def download_file(
             )
 
         print(f"Download complete: {os.path.basename(filepath)}")
+        # _verify_checksum(filepath, checksum_url or "", timeout)
 
         return filepath
 
@@ -583,54 +517,6 @@ def degrees_to_dms(degrees) -> tuple:
     s = (abs(degrees) - abs(d) - m / 60.0) * 3600  # Seconds
 
     return d, m, s
-
-
-# HIPASS Query with filename pattern to extract RA, DEC and Vsys
-HIPASS_QUERY_RA_DEC_VSYS = (
-    'SELECT RAJ2000, DEJ2000, VSys FROM "J/AJ/128/16/table2" WHERE '
-    "HIPASS LIKE '$filename'"
-)
-# Query on Topcat:
-# select RAJ2000, DEJ2000, VSys from "J/AJ/128/16/table2" where HIPASS like 'J1318-21'
-URL_2 = "http://tapvizier.cds.unistra.fr/TAPVizieR/tap"
-
-
-# TAP Query function to get the RA, DEC and Vsys values from Vizier table
-def tap_query_RA_DEC_VSYS(filename: str) -> Table:
-    """
-    Executes a TAP query to retrieve Right Ascension (RA), Declination (DEC) and systemic
-    velocity (VSYS) information based on the provided filename.
-
-    Parameters
-    ----------
-    filename:
-        The name of the file, expected to contain 'HIPASS' if applicable.
-
-    Returns
-    -------
-    Table
-        The query results in an Astropy Table format.
-    """
-
-    # Check if 'HIPASS' is in the filename and extract the portion after it
-    if "HIPASS" in filename:
-        extracted_name = filename[
-            filename.index("HIPASS") + len("HIPASS") :  # ignore = E203
-        ]
-        extracted_name = (
-            extracted_name.strip()
-        )  # Remove any leading or trailing whitespace
-    else:
-        extracted_name = filename  # If 'HIPASS' is not found, use the filename as is
-
-    query = HIPASS_QUERY_RA_DEC_VSYS.replace("$filename", extracted_name)
-    print(f"RA DEC VSYS Query: {query}")
-
-    casdatap = TapPlus(url=URL_2, verbose=False)
-    job = casdatap.launch_job_async(query)
-    res = job.get_results()
-    print(f"Query result: {res}")
-    return res
 
 
 # Test imager
@@ -787,293 +673,23 @@ def mosaic():
     print(f"Output file created: {weights_filename}")
 
 
-# HIPASS Query with filename pattern
-HIPASS_QUERY_FILENAME = "SELECT * FROM ivoa.obscore WHERE " "filename LIKE '$filename%'"
-
-URL = "https://casda.csiro.au/casda_vo_tools/tap"
-
-
-# TAP Query function
-def tap_query_filename_visibility(filename: str) -> Table:
-    """
-    Queries the CASDA TAP service for a given filename.
-
-    Parameters
-    ----------
-    filename:
-        The name of the file to query.
-
-    Returns
-    -------
-    Table
-        The Table with query result (files to download).
-    """
-
-    query = HIPASS_QUERY_FILENAME.replace("$filename", filename)
-    print(f"TAP Query: {query}")
-
-    casdatap = TapPlus(url=URL, verbose=False)
-    job = casdatap.launch_job_async(query)
-    res = job.get_results()
-    print(f"Query result: {res}")
-    return res
-
-
-# HIPASS Query with SBID pattern
-HIPASS_QUERY_sbid = (
-    "SELECT * FROM casda.observation_evaluation_file WHERE " "sbid = '$sbid'"
-)
-
-URL = "https://casda.csiro.au/casda_vo_tools/tap"
-
-
-# TAP Query function
-def tap_query_sbid_evaluation(sbid: int) -> Table:
-    """
-    Queries the CASDA TAP service for a given filename.
-
-    Parameters
-    ----------
-    sbid:
-        The sbid to query.
-
-    Returns
-    -------
-    Table
-        The astropy table with query result (files to download).
-    """
-
-    query = HIPASS_QUERY_sbid.replace("$sbid", str(sbid))  # Convert sbid to string
-    print(f"TAP Query: {query}")
-
-    casdatap = TapPlus(url=URL, verbose=False)
-    job = casdatap.launch_job_async(query)
-    res = job.get_results()
-    print(f"Query result: {res}")
-    return res
-
-
-# Function to map evaluation files
-def find_evaluation_file(name: str, updated_vis_eval_dict: dict) -> str | None:
-    """
-    Finds the key in updated_vis_eval_dict that contains the given filename as a
-    substring.
-
-    Parameters
-    ----------
-    name:
-        The filename to search for within the dictionary values.
-    updated_vis_eval_dict:
-        A dictionary where keys are identifiers, and values are lists of filenames.
-
-    Returns
-    -------
-    str
-        The key corresponding to the list containing the filename, or None if not found.
-    """
-
-    for key, filenames in updated_vis_eval_dict.items():
-        # Check if the name is a substring of any filename
-        if any(name in filename for filename in filenames):
-            return key
-    return None  # Default if no match is found
-
-
-# test versions (without implementing download)
-logging.basicConfig()
-logging.getLogger().setLevel(logging.INFO)
-
-DID_URL = "https://casda.csiro.au/casda_data_access/metadata/evaluationEncapsulation"
-EVAL_URL = "https://data.csiro.au/casda_vo_proxy/vo/datalink/links?ID="
-
-
-def download_evaluation_files(filename: str, project_code: str, credentials: str):
-    """
-    Downloads and extracts evaluation files for a given filename and project code from
-    CASDA.
-
-    Parameters
-    ----------
-    filename:
-        The filename used to query the visibility data.
-    project_code:
-        The project code associated with the observations.
-    credentials:
-        Path to the credentials file containing CASDA login details.
-
-    Returns
-    -------
-    None
-    """
-
-    # Step 1: Create sbid_visibility_dict
-    sbid_visibility_dict: dict = {}
-    res = tap_query_filename_visibility(filename)
-
-    obs_id_list = list(res["obs_id"])
-    obs_id_list = [str(item) for item in obs_id_list]
-
-    visibility_list = list(res["filename"])
-    visibility_list = [str(item) for item in visibility_list]
-
-    for obs_id, visibility in zip(obs_id_list, visibility_list):
-        sbid_visibility_dict.setdefault(obs_id, []).append(visibility)
-
-    # Update the same dictionary by modifying keys
-    sbid_visibility_dict = {
-        key.replace("ASKAP-", ""): value for key, value in sbid_visibility_dict.items()
-    }
-
-    # Step 2: Create sbid_evaluation_dict from sbid_visibility_dict
-    # Initialize the dictionary to store results
-    sbid_evaluation_dict = {}
-
-    # Extract unique SBIDs from sbid_visibility_dict
-    unique_sbid_set = sbid_visibility_dict.keys()
-
-    for sbid in unique_sbid_set:
-        # Run the TAP query for the current SBID
-        res = tap_query_sbid_evaluation(sbid)
-
-        # Check if the result is not empty
-        if len(res) > 0:
-            # Convert the result to an Astropy Table for easier processing
-            table = Table(res)
-
-            # Ensure the necessary columns exist
-            if "filename" in table.colnames and "filesize" in table.colnames:
-                # Find the row with the largest filesize
-                largest_file_row = table[table["filesize"].argmax()]
-                filename = largest_file_row["filename"]  # Get the filename
-            else:
-                filename = ""  # If columns are missing, set to None
-        else:
-            filename = ""  # If query result is empty, set to None
-
-        # Add the SBID and its corresponding filename to the dictionary
-        sbid_evaluation_dict[sbid] = filename
-
-    # Convert np.str_ values to plain strings in sbid_evaluation_dict
-    sbid_evaluation_dict = {
-        key: str(value) for key, value in sbid_evaluation_dict.items()
-    }
-
-    # Print the two dictionaries
-    # Print the updated sbid_visibility_dict
-    print("sbid_visibility_dict:")
-    print(sbid_visibility_dict)
-
-    # Print the updated dictionary
-    print("sbid_evaluation_dict:")
-    print(sbid_evaluation_dict)
-
-    # Step 3: Downloading the required evaluation files
-    # Read credentials from the provided file
-    parser = configparser.ConfigParser()
-    parser.read(credentials)
-    username = parser["CASDA"]["username"]
-    password = parser["CASDA"]["password"]
-
-    # Initialize CASDA instance
-    casda = Casda(username, password)
-
-    # Iterate through the dictionaries
-    for sbid, required_filename in sbid_evaluation_dict.items():
-        print(f"Processing SBID: {sbid}")
-
-        # Remove 'ASKAP-' prefix if present
-        sbid = str(sbid).replace("ASKAP-", "")
-
-        # Fetch the DID (data identification) for the sbid and project code
-        url = f"{DID_URL}?projectCode={project_code}&sbid={sbid}"
-        logging.info(f"Requesting data from: {url}")
-        res = requests.get(url)
-        if res.status_code != 200:
-            raise Exception(f"Error fetching data: {res.reason} (HTTP {res.status_code})")
-
-        logging.info(f"Response received: {res.json()}")
-
-        # Filter evaluation files
-        evaluation_files = [f for f in res.json() if "evaluation" in f]
-        evaluation_files.sort()
-
-        if not evaluation_files:
-            logging.warning(
-                f"No evaluation files found for projectCode={project_code} and \
-                    sbid={sbid}."
-            )
-            return
-
-        logging.info(f"Found evaluation files: {evaluation_files}")
-
-        # Prepare the table for staging
-        t = Table()
-        t["access_url"] = [f"{EVAL_URL}{f}" for f in evaluation_files]
-
-        # Stage files for download
-        url_list = casda.stage_data(t)
-        logging.info(f"Staging files: {url_list}")
-
-        # Check which files need to be downloaded and filter by required filename
-        download_url_list = []
-        for url in url_list:
-            filename = url.split("?")[0].rsplit("/", 1)[1]
-            if filename == required_filename:
-                download_url_list.append(url)
-
-        # View the download_url_list
-        print("Files staged for download:")
-        for idx, url in enumerate(download_url_list, start=1):
-            print(f"- link {idx}: {url}")
-
-        # Download the required files
-        # Uncomment this section for actual downloading
-        # Define the download directory as the current working directory
-        download_dir = os.getcwd()
-
-        # Download the required files
-        if download_url_list:
-            print(f"Downloading files to: {download_dir}")
-            filelist = casda.download_files(download_url_list, savedir=download_dir)
-            logging.info(f"Downloaded files: {filelist}")
-            logging.info(f"All files have been downloaded to {download_dir}.")
-        else:
-            logging.warning("No files staged for download.")
-
-    # Step 4: Untar all the evaluation files that
-    # Download directory would be the current working directory
-    download_dir = os.getcwd()
-
-    # Iterating through dict values to untar each file
-    for sbid, tar_file in sbid_evaluation_dict.items():
-
-        tar_path = os.path.join(download_dir, tar_file)
-
-        tar_file_folder_name = os.path.splitext(tar_file)[0]
-
-        # Create the folder if it doesn't already exist
-        os.makedirs(tar_file_folder_name, exist_ok=True)
-
-        # Extract the .tar file into the folder
-        with tarfile.open(tar_path, "r") as tar:
-            tar.extractall(path=tar_file_folder_name)
-
-        print(f"Extracted '{tar_file}' to '{tar_file_folder_name}'")
-
-
 def download_data_ms(
     credentials: str,
     input_csv: str,
     catalogue_name: str,
     timeout_seconds: int,
     project_code: str,
+    ms_urls_json: Optional[str] = None,
 ):
     """
     Downloads and untars the .ms files for a given HIPASS source.
 
+    If ms_urls_json is provided (JSON list of staged URLs), downloads from those
+    URLs and skips TAP query and CASDA staging. Otherwise uses existing TAP/stage flow.
+
     Parameters
     ----------
-    credentials: i
+    credentials:
         Path to the CASDA credentials file.
     input_csv:
         Path to the input CSV file with source names.
@@ -1083,81 +699,46 @@ def download_data_ms(
         Timeout setting in seconds for download operations.
     project_code:
         Code of the project.
+    ms_urls_json:
+        JSON string list of staged MS/tar URLs (from manifest). Required; TAP/CASDA staging
+        is handled by beampipe-core.
 
     Returns
     -------
     None
     """
-
-    # Read credentials from the provided file
-    parser = configparser.ConfigParser()
-    parser.read(credentials)
-    # username = parser["CASDA"]["username"]
-    # password = parser["CASDA"]["password"]
-
-    # Initialize CASDA instance
-    casda = Casda(parser["CASDA"]["username"], parser["CASDA"]["password"])
-
-    # Prepare a list to store the output rows for .ms files
-    # output_data: list = []
-
-    # Load the processed catalogue to check for already processed sources
-    processed_catalogue = pd.read_csv(catalogue_name)
-    processed_sources = set(processed_catalogue["Name"])
-
-    with open(input_csv, mode="r") as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-
-        # For every row i.e. HIPASS source
-        for row in csv_reader:
-            name = row["Name"]
-
-            # Check if the source has already been processed
-            if name in processed_sources:
-                print(f"{name} already processed")
-                continue  # Skip to the next row if the source is processed
-
-            print(f"Querying for: {name}")
-
-            # Get filenames from the query
-            res = tap_query(name)
-            url_list = casda.stage_data(res, verbose=True)
-            print(f"url_list: {url_list}")
-
-            # Download files concurrently in the current working directory
-            # Empty list to store downloaded filenames
-            file_list = []
-
-            # ThreadPoolExecuter created with a maximum of N threads, meaning upto N file
-            # downloads can happen simultaneously
-            # Tested max_worker values: 4, 6, 12, 16, 32, 64; keep it at max_workers=10
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-
-                # List of futures, where each future represents a task to be submitted to
-                # the executor
-                futures = [
-                    executor.submit(
-                        download_file,
-                        url=url,
-                        check_exists=True,
-                        output=".",
-                        timeout=timeout_seconds,
-                    )
-                    for url in url_list
-                    if not url.endswith("checksum")
-                ]
-
-                # For each completed future, save the file-name to file_list
-                for future in concurrent.futures.as_completed(futures):
-                    file_list.append(future.result())
-
-            # Untar files in the current working directory
-            print(f"Untarring files for: {name}")
-            for file in file_list:
-                if file.endswith(".tar") and tarfile.is_tarfile(file):
-                    untar_file(file, ".")
-
-    print(".ms files downloaded")
+    if not ms_urls_json:
+        raise ValueError("manifest input required; ms_urls_json must be provided")
+    raw = json.loads(ms_urls_json)
+    items = []
+    for u in raw:
+        if isinstance(u, str):
+            if not u.endswith("checksum"):
+                items.append({"url": u, "checksum_url": ""})
+        elif isinstance(u, dict) and u.get("url"):
+            items.append({
+                "url": u["url"],
+                "checksum_url": u.get("checksum_url") or "",
+            })
+    file_list = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(
+                download_file,
+                url=item["url"],
+                check_exists=True,
+                output=".",
+                timeout=timeout_seconds,
+                checksum_url=item["checksum_url"] or None,
+            )
+            for item in items
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            file_list.append(future.result())
+    for file in file_list:
+        if file.endswith(".tar") and tarfile.is_tarfile(file):
+            untar_file(file, ".")
+    print(".ms files downloaded (from manifest URLs)")
 
 
 def download_data_eval(
@@ -1166,9 +747,13 @@ def download_data_eval(
     catalogue_name: str,
     timeout_seconds: int,
     project_code: str,
+    eval_urls_json: Optional[str] = None,
 ):
     """
     Downloads and untars the evaluation files for a given HIPASS source.
+
+    If eval_urls_json is provided (JSON list of staged eval URLs), downloads from
+    those URLs and skips TAP queries and CASDA staging. Otherwise uses existing flow.
 
     Parameters
     ----------
@@ -1182,194 +767,38 @@ def download_data_eval(
         Timeout setting in seconds for download operations.
     project_code:
         Code of the project.
+    eval_urls_json:
+        JSON string list of staged evaluation tar URLs (from manifest). Required; TAP/CASDA
+        staging is handled by beampipe-core.
 
     Returns
     -------
     None
     """
-
-    # Read credentials from the provided file
-    parser = configparser.ConfigParser()
-    parser.read(credentials)
-    # username = parser["CASDA"]["username"]
-    # password = parser["CASDA"]["password"]
-
-    # Initialize CASDA instance
-    casda = Casda(parser["CASDA"]["username"], parser["CASDA"]["password"])
-
-    # Prepare a list to store the output rows for .ms files
-    # output_data:list = []
-
-    # Load the processed catalogue to check for already processed sources
-    processed_catalogue = pd.read_csv(catalogue_name)
-    processed_sources = set(processed_catalogue["Name"])
-
-    with open(input_csv, mode="r") as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-
-        # For every row i.e. HIPASS source
-        for row in csv_reader:
-            name = row["Name"]
-
-            # Check if the source has already been processed
-            if name in processed_sources:
-                print(f"{name} already processed")
-                continue  # Skip to the next row if the source is processed
-
-            print(f"Querying for: {name}")
-
-            # Inserting the download_evaluation_files (code)
-            # Step 1: Create sbid_visibility_dict
-            sbid_visibility_dict: dict = {}
-            res = tap_query_filename_visibility(name)
-
-            obs_id_list = list(res["obs_id"])
-            obs_id_list = [str(item) for item in obs_id_list]
-
-            visibility_list = list(res["filename"])
-            visibility_list = [str(item) for item in visibility_list]
-
-            for obs_id, visibility in zip(obs_id_list, visibility_list):
-                sbid_visibility_dict.setdefault(obs_id, []).append(visibility)
-
-            # Update the same dictionary by modifying keys
-            sbid_visibility_dict = {
-                key.replace("ASKAP-", ""): value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Step 2: Create sbid_evaluation_dict from sbid_visibility_dict
-            # Initialize the dictionary to store results
-            sbid_evaluation_dict = {}
-
-            # Extract unique SBIDs from sbid_visibility_dict
-            unique_sbid_set = sbid_visibility_dict.keys()
-
-            for sbid in unique_sbid_set:
-                # Run the TAP query for the current SBID
-                res = tap_query_sbid_evaluation(sbid)
-
-                # Check if the result is not empty
-                if len(res) > 0:
-                    # Convert the result to an Astropy Table for easier processing
-                    table = Table(res)
-
-                    # Ensure the necessary columns exist
-                    if "filename" in table.colnames and "filesize" in table.colnames:
-                        # Find the row with the largest filesize
-                        largest_file_row = table[table["filesize"].argmax()]
-                        filename = largest_file_row["filename"]  # Get the filename
-                    else:
-                        filename = None  # If columns are missing, set to None
-                else:
-                    filename = None  # If query result is empty, set to None
-
-                # Add the SBID and its corresponding filename to the dictionary
-                sbid_evaluation_dict[sbid] = filename
-
-            # Convert np.str_ values to plain strings in sbid_evaluation_dict
-            sbid_evaluation_dict = {
-                key: str(value) for key, value in sbid_evaluation_dict.items()
-            }
-
-            # Print the two dictionaries
-            # Print the updated sbid_visibility_dict
-            print("sbid_visibility_dict:")
-            print(sbid_visibility_dict)
-
-            # Print the updated dictionary
-            print("sbid_evaluation_dict:")
-            print(sbid_evaluation_dict)
-
-            # Step 3: Downloading the required evaluation files
-
-            # Iterate through the dictionaries
-            for sbid, required_filename in sbid_evaluation_dict.items():
-                print(f"Processing SBID: {sbid}")
-
-                # Remove 'ASKAP-' prefix if present
-                sbid = str(sbid).replace("ASKAP-", "")
-
-                # Fetch the DID (data identification) for the sbid and project code
-                url = f"{DID_URL}?projectCode={project_code}&sbid={sbid}"
-                logging.info(f"Requesting data from: {url}")
-                res = requests.get(url)
-                if res.status_code != 200:
-                    raise Exception(
-                        f"Error fetching data: {res.reason} (HTTP {res.status_code})"
-                    )
-
-                logging.info(f"Response received: {res.json()}")
-
-                # Filter evaluation files
-                evaluation_files = [f for f in res.json() if "evaluation" in f]
-                evaluation_files.sort()
-
-                if not evaluation_files:
-                    logging.warning(
-                        f"No evaluation files found for projectCode={project_code} and \
-                            sbid={sbid}."
-                    )
-                    return
-
-                logging.info(f"Found evaluation files: {evaluation_files}")
-
-                # Prepare the table for staging
-                t = Table()
-                t["access_url"] = [f"{EVAL_URL}{f}" for f in evaluation_files]
-
-                # Stage files for download
-                url_list = casda.stage_data(t)
-                logging.info(f"Staging files: {url_list}")
-
-                # Check which files need to be downloaded and filter by required filename
-                download_url_list = []
-                for url in url_list:
-                    filename = url.split("?")[0].rsplit("/", 1)[1]
-                    if filename == required_filename:
-                        download_url_list.append(url)
-
-                # View the download_url_list
-                print("Files staged for download:")
-                for idx, url in enumerate(download_url_list, start=1):
-                    print(f"- link {idx}: {url}")
-
-                # Download the required files
-                # Define the download directory as the current working directory
-                download_dir = os.getcwd()
-
-                # Download the required files
-                if download_url_list:
-                    print(f"Downloading files to: {download_dir}")
-                    filelist = casda.download_files(
-                        download_url_list, savedir=download_dir
-                    )
-                    logging.info(f"Downloaded files: {filelist}")
-                    logging.info(f"All files have been downloaded to {download_dir}.")
-                else:
-                    logging.warning("No files staged for download.")
-
-            # Step 4: Untar all the evaluation files
-            # Download directory would be the current working directory
-            download_dir = os.getcwd()
-
-            # Iterating through dict values to untar each file
-            for sbid, tar_file in sbid_evaluation_dict.items():
-
-                tar_path = os.path.join(download_dir, tar_file)
-
-                tar_file_folder_name = os.path.splitext(tar_file)[0]
-
-                # Create the folder if it doesn't already exist
-                os.makedirs(tar_file_folder_name, exist_ok=True)
-
-                # Extract the .tar file into the folder
-                with tarfile.open(tar_path, "r") as tar:
-                    tar.extractall(path=tar_file_folder_name)
-
-                print(f"Extracted '{tar_file}' to '{tar_file_folder_name}'")
-
-    print("Evaluation files downloaded!")
+    if not eval_urls_json:
+        raise ValueError("manifest input required; eval_urls_json must be provided")
+    raw = json.loads(eval_urls_json)
+    items = []
+    for u in raw:
+        if isinstance(u, str):
+            items.append({"url": u, "checksum_url": ""})
+        elif isinstance(u, dict) and u.get("url"):
+            items.append({
+                "url": u["url"],
+                "checksum_url": u.get("checksum_url") or "",
+            })
+    download_dir = os.getcwd()
+    for item in items:
+        path = download_file(
+            url=item["url"],
+            check_exists=True,
+            output=download_dir,
+            timeout=timeout_seconds,
+            checksum_url=item["checksum_url"] or None,
+        )
+        if path.endswith(".tar") and tarfile.is_tarfile(path):
+            untar_file(path, ".")
+    print("Evaluation files downloaded (from manifest URLs)")
 
 
 def process_CSV_mosaic(filename: str) -> list:
@@ -1450,247 +879,6 @@ def process_CSV_mosaic(filename: str) -> list:
     return data
 
 
-def process_SOURCE(
-    credentials: str,
-    input_csv: str,
-    catalogue_name: str,
-    timeout_seconds: int,
-    project_code: str,
-):
-    """
-    Processes an input catalogue of unprocessed sources to retrieve relevant data,
-    and saves the processed details to a CSV file 'hipass_ms_file_details.csv' in
-    the working directory.
-
-    Parameters
-    ----------
-    credentials:
-        Path to the CASDA credentials file.
-    input_csv:
-        Path to the input CSV file with source names.
-    catalogue_name:
-        Path to the catalogue of already processed sources.
-    timeout_seconds:
-        Timeout setting in seconds for download operations.
-    project_code:
-        Code of the project.
-
-    Returns
-    -------
-    None
-    """
-
-    # Read credentials from the provided file
-    parser = configparser.ConfigParser()
-    parser.read(credentials)
-    # username = parser["CASDA"]["username"]
-    # password = parser["CASDA"]["password"]
-
-    # Initialize CASDA instance
-    casda = Casda(parser["CASDA"]["username"], parser["CASDA"]["password"])
-
-    # Prepare a list to store the output rows for .ms files
-    output_data = []
-
-    # Load the processed catalogue to check for already processed sources
-    processed_catalogue = pd.read_csv(catalogue_name)
-    processed_sources = set(processed_catalogue["Name"])
-
-    # Initialize the updated_vis_eval_dict
-    updated_vis_eval_dict = {}
-
-    with open(input_csv, mode="r") as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-
-        # For every row i.e. HIPASS source
-        for row in csv_reader:
-            name = row["Name"]
-
-            # Check if the source has already been processed
-            if name in processed_sources:
-                print(f"{name} already processed")
-                continue  # Skip to the next row if the source is processed
-
-            print(f"Querying for: {name}")
-
-            # Create sbid_visibility_dict
-            sbid_visibility_dict: dict = {}
-            res = tap_query_filename_visibility(name)
-
-            obs_id_list = list(res["obs_id"])
-            obs_id_list = [str(item) for item in obs_id_list]
-
-            visibility_list = list(res["filename"])
-            visibility_list = [str(item) for item in visibility_list]
-
-            for obs_id, visibility in zip(obs_id_list, visibility_list):
-                sbid_visibility_dict.setdefault(obs_id, []).append(visibility)
-
-            # Update the same dictionary by modifying keys
-            sbid_visibility_dict = {
-                key.replace("ASKAP-", ""): value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Create sbid_evaluation_dict from sbid_visibility_dict
-            sbid_evaluation_dict = {}
-
-            # Extract unique SBIDs from sbid_visibility_dict
-            unique_sbid_set = sbid_visibility_dict.keys()
-
-            for sbid in unique_sbid_set:
-                # Run the TAP query for the current SBID
-                res = tap_query_sbid_evaluation(sbid)
-
-                # Check if the result is not empty
-                if len(res) > 0:
-                    # Convert the result to an Astropy Table for easier processing
-                    table = Table(res)
-
-                    # Ensure the necessary columns exist
-                    if "filename" in table.colnames and "filesize" in table.colnames:
-                        # Find the row with the largest filesize
-                        largest_file_row = table[table["filesize"].argmax()]
-                        filename = largest_file_row["filename"]  # Get the filename
-                    else:
-                        filename = None  # If columns are missing, set to None
-                else:
-                    filename = None  # If query result is empty, set to None
-
-                # Add the SBID and its corresponding filename to the dictionary
-                sbid_evaluation_dict[sbid] = filename
-
-            # Convert np.str_ values to plain strings in sbid_evaluation_dict
-            sbid_evaluation_dict = {
-                key: str(value) for key, value in sbid_evaluation_dict.items()
-            }
-
-            # Print the two dictionaries
-            # Print sbid_visibility_dict
-            print("sbid_visibility_dict:")
-            print(sbid_visibility_dict)
-
-            # Print sbid_evaluation_dict
-            print("sbid_evaluation_dict:")
-            print(sbid_evaluation_dict)
-
-            # Creating a new vis, eval dict based on the above two dictionaries
-            vis_eval_dict = {
-                sbid_evaluation_dict[key]: value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Print vis_eval_dict
-            print("vis_eval_dict:")
-            print(vis_eval_dict)
-
-            # Rename the values of the dict accordingly
-            # Make a deep copy of the dictionary
-            updated_vis_eval_dict = copy.deepcopy(vis_eval_dict)
-
-            # Dictionary to track the occurrence of filenames
-            occurrence_count: dict = {}
-
-            # Iterate through the copy and rename duplicates
-            for key, file_list in updated_vis_eval_dict.items():
-                for i, filename in enumerate(file_list):
-                    # If the filename has been seen before
-                    if filename in occurrence_count:
-                        occurrence_count[filename] += 1  # Increment the occurrence count
-                        # Rename the file by appending _N
-                        name_parts = filename.split(".ms.tar")  # Split to add suffix
-                        new_name = f"{name_parts[0]}_{occurrence_count[filename]}.ms.tar"
-                        file_list[i] = new_name  # Replace with the new name
-                    else:
-                        # If first occurrence, initialise count
-                        occurrence_count[filename] = 1
-
-            # Print updated_vis_eval_dict
-            print("updated_vis_eval_dict:")
-            print(updated_vis_eval_dict)
-
-            # Get RA, DEC, and Vsys from the query
-            res = tap_query_RA_DEC_VSYS(name)
-
-            # Assuming res returns a DataFrame with the required values, extract them
-            if not res or len(res) == 0:
-                print(f"No results found for {name}. Skipping...")
-                continue
-
-            ra = res["RAJ2000"][0]
-            dec = res["DEJ2000"][0]
-            vsys = res["VSys"][0]
-            print(f"Retrieved RA={ra}, DEC={dec}, VSys={vsys} for {name}")
-
-            # Convert RA and DEC from degrees to hms and dms formats
-            ra_h, ra_m, ra_s = degrees_to_hms(ra)
-            dec_d, dec_m, dec_s = degrees_to_dms(dec)
-            print(
-                f"Converted RA={ra_h}h {ra_m}m {ra_s:.2f}s, \
-                    DEC={dec_d}° {dec_m}′ {dec_s:.2f}″ for {name}"
-            )
-
-            ra_s = round(ra_s, 2)
-            dec_s = round(dec_s, 2)
-
-            # Convert to required RA_string and DEC_string formats
-            RA_string = f"{ra_h}h{ra_m}m{ra_s}s"
-            Dec_string = f"{dec_d}.{dec_m}.{dec_s}"
-
-            # Get filenames
-            res = tap_query(name)
-            _ = casda.stage_data(res, verbose=True)
-            print(f"Staging data URLs for {name}")
-
-            files = res["filename"]
-
-            # Dictionary to keep track of duplicate counts for each file
-            filename_counts: dict = {}
-            for file in files:
-                # Remove the .tar extension from the filename
-                file_no_tar = file.replace(".ms.tar", "")
-
-                # Check if the filename already exists in the dictionary
-                if file_no_tar in filename_counts:
-                    # Increment the counter for this filename
-                    filename_counts[file_no_tar] += 1
-                    # Insert the counter before the .ms suffix
-                    new_filename = f"{file_no_tar}_{filename_counts[file_no_tar]}"
-                else:
-                    # First occurrence of the filename, set counter to 1
-                    filename_counts[file_no_tar] = 1
-                    # Keep the original filename on the first occurrence
-                    new_filename = file_no_tar
-
-                print(f"File {new_filename} added to i/p for pipeline part B")
-                # output_data.append([new_filename, f"{ra_h}: {ra_m}: {ra_s:.2f}",
-                #   f"{dec_d}: {dec_m}: {dec_s:.2f}", vsys])
-                output_data.append([new_filename, RA_string, Dec_string, vsys])
-
-    # Creates a df with with filename, RA, DEC and System Velocity
-    output_df = pd.DataFrame(
-        output_data, columns=["Name", "RA_string", "Dec_string", "Vsys"]
-    )
-
-    # Add an additional column i.e. the evaluation file
-    # Apply the function to create the new column
-    output_df["evaluation_file"] = output_df["Name"].apply(
-        find_evaluation_file, args=(updated_vis_eval_dict,)
-    )
-
-    # Define the suffix to append to evaluation_file for creating evaluation_file_path
-    suffix = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
-
-    # Create a new column evaluation_file_path by combining evaluation_file with suffix
-    output_df["evaluation_file_path"] = output_df["evaluation_file"].apply(
-        lambda x: x.replace(".tar", f"/{suffix}") if pd.notnull(x) else None
-    )
-
-    output_csv = os.path.join(".", "hipass_ms_file_details.csv")
-    output_df.to_csv(output_csv, index=False, header=True)
-    print(f"Output saved to {output_csv}")
-
-
 def process_CSV(filename: str) -> list:
     """
     Reads a CSV file and processes its contents, returning a list of dictionaries.
@@ -1760,251 +948,6 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_SOURCE_str(
-    credentials: str,
-    input_csv: str,
-    catalogue_name: str,
-    timeout_seconds: int,
-    project_code: str,
-) -> str:
-    """
-    Processes an input catalogue of unprocessed sources to retrieve relevant data,
-    and saves the processed details to a CSV file 'hipass_ms_file_details.csv' in
-    the working directory.
-
-    Parameters
-    ----------
-    credentials:
-        Path to the CASDA credentials file.
-    input_csv:
-        Path to the input CSV file with source names.
-    catalogue_name:
-        Path to the catalogue of already processed sources.
-    timeout_seconds:
-        Timeout setting in seconds for download operations.
-    project_code:
-        Code of the project.
-
-    Returns
-    -------
-    str
-        The CSV file passed as a string.
-    """
-
-    # Read credentials from the provided file
-    parser = configparser.ConfigParser()
-    parser.read(credentials)
-    # username = parser["CASDA"]["username"]
-    # password = parser["CASDA"]["password"]
-
-    # Initialize CASDA instance
-    casda = Casda(parser["CASDA"]["username"], parser["CASDA"]["password"])
-
-    # Prepare a list to store the output rows for .ms files
-    output_data = []
-
-    # Load the processed catalogue to check for already processed sources
-    processed_catalogue = pd.read_csv(catalogue_name)
-    processed_sources = set(processed_catalogue["Name"])
-
-    # Initialize the updated_vis_eval_dict
-    updated_vis_eval_dict = {}
-
-    with open(input_csv, mode="r") as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-
-        # For every row i.e. HIPASS source
-        for row in csv_reader:
-            name = row["Name"]
-
-            # Check if the source has already been processed
-            if name in processed_sources:
-                print(f"{name} already processed")
-                continue  # Skip to the next row if the source is processed
-
-            print(f"Querying for: {name}")
-
-            # Create sbid_visibility_dict
-            sbid_visibility_dict: dict = {}
-            res = tap_query_filename_visibility(name)
-
-            obs_id_list = list(res["obs_id"])
-            obs_id_list = [str(item) for item in obs_id_list]
-
-            visibility_list = list(res["filename"])
-            visibility_list = [str(item) for item in visibility_list]
-
-            for obs_id, visibility in zip(obs_id_list, visibility_list):
-                sbid_visibility_dict.setdefault(obs_id, []).append(visibility)
-
-            # Update the same dictionary by modifying keys
-            sbid_visibility_dict = {
-                key.replace("ASKAP-", ""): value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Create sbid_evaluation_dict from sbid_visibility_dict
-            sbid_evaluation_dict = {}
-
-            # Extract unique SBIDs from sbid_visibility_dict
-            unique_sbid_set = sbid_visibility_dict.keys()
-
-            for sbid in unique_sbid_set:
-                # Run the TAP query for the current SBID
-                res = tap_query_sbid_evaluation(sbid)
-
-                # Check if the result is not empty
-                if len(res) > 0:
-                    # Convert the result to an Astropy Table for easier processing
-                    table = Table(res)
-
-                    # Ensure the necessary columns exist
-                    if "filename" in table.colnames and "filesize" in table.colnames:
-                        # Find the row with the largest filesize
-                        largest_file_row = table[table["filesize"].argmax()]
-                        filename = largest_file_row["filename"]  # Get the filename
-                    else:
-                        filename = None  # If columns are missing, set to None
-                else:
-                    filename = None  # If query result is empty, set to None
-
-                # Add the SBID and its corresponding filename to the dictionary
-                sbid_evaluation_dict[sbid] = filename
-
-            # Convert np.str_ values to plain strings in sbid_evaluation_dict
-            sbid_evaluation_dict = {
-                key: str(value) for key, value in sbid_evaluation_dict.items()
-            }
-
-            # Print the two dictionaries
-            # Print sbid_visibility_dict
-            print("sbid_visibility_dict:")
-            print(sbid_visibility_dict)
-
-            # Print sbid_evaluation_dict
-            print("sbid_evaluation_dict:")
-            print(sbid_evaluation_dict)
-
-            # Creating a new vis, eval dict based on the above two dictionaries
-            vis_eval_dict = {
-                sbid_evaluation_dict[key]: value
-                for key, value in sbid_visibility_dict.items()
-            }
-
-            # Print vis_eval_dict
-            print("vis_eval_dict:")
-            print(vis_eval_dict)
-
-            # Rename the values of the dict accordingly
-            # Make a deep copy of the dictionary
-            updated_vis_eval_dict = copy.deepcopy(vis_eval_dict)
-
-            # Dictionary to track the occurrence of filenames
-            occurrence_count: dict = {}
-
-            # Iterate through the copy and rename duplicates
-            for key, file_list in updated_vis_eval_dict.items():
-                for i, filename in enumerate(file_list):
-                    # If the filename has been seen before
-                    if filename in occurrence_count:
-                        occurrence_count[filename] += 1  # Increment the occurrence count
-                        # Rename the file by appending _N
-                        name_parts = filename.split(".ms.tar")  # Split to add suffix
-                        new_name = f"{name_parts[0]}_{occurrence_count[filename]}.ms.tar"
-                        file_list[i] = new_name  # Replace with the new name
-                    else:
-                        # If first occurrence, initialise count
-                        occurrence_count[filename] = 1
-
-            # Print updated_vis_eval_dict
-            print("updated_vis_eval_dict:")
-            print(updated_vis_eval_dict)
-
-            # Get RA, DEC, and Vsys from the query
-            res = tap_query_RA_DEC_VSYS(name)
-
-            # Assuming res returns a DataFrame with the required values, extract them
-            if not res or len(res) == 0:
-                print(f"No results found for {name}. Skipping...")
-                continue
-
-            ra = res["RAJ2000"][0]
-            dec = res["DEJ2000"][0]
-            vsys = res["VSys"][0]
-            print(f"Retrieved RA={ra}, DEC={dec}, VSys={vsys} for {name}")
-
-            # Convert RA and DEC from degrees to hms and dms formats
-            ra_h, ra_m, ra_s = degrees_to_hms(ra)
-            dec_d, dec_m, dec_s = degrees_to_dms(dec)
-            print(
-                f"Converted RA={ra_h}h {ra_m}m {ra_s:.2f}s, \
-                    DEC={dec_d}° {dec_m}′ {dec_s:.2f}″ for {name}"
-            )
-
-            ra_s = round(ra_s, 2)
-            dec_s = round(dec_s, 2)
-
-            # Convert to required RA_string and DEC_string formats
-            RA_string = f"{ra_h}h{ra_m}m{ra_s}s"
-            Dec_string = f"{dec_d}.{dec_m}.{dec_s}"
-
-            # Get filenames
-            res = tap_query(name)
-            _ = casda.stage_data(res, verbose=True)
-            print(f"Staging data URLs for {name}")
-
-            files = res["filename"]
-
-            # Dictionary to keep track of duplicate counts for each file
-            filename_counts: dict = {}
-            for file in files:
-                # Remove the .tar extension from the filename
-                file_no_tar = file.replace(".ms.tar", "")
-
-                # Check if the filename already exists in the dictionary
-                if file_no_tar in filename_counts:
-                    # Increment the counter for this filename
-                    filename_counts[file_no_tar] += 1
-                    # Insert the counter before the .ms suffix
-                    new_filename = f"{file_no_tar}_{filename_counts[file_no_tar]}"
-                else:
-                    # First occurrence of the filename, set counter to 1
-                    filename_counts[file_no_tar] = 1
-                    # Keep the original filename on the first occurrence
-                    new_filename = file_no_tar
-
-                print(f"File {new_filename} added to i/p for pipeline part B")
-                # output_data.append([new_filename, f"{ra_h}: {ra_m}: {ra_s:.2f}",
-                # f"{dec_d}: {dec_m}: {dec_s:.2f}", vsys])
-                output_data.append([new_filename, RA_string, Dec_string, vsys])
-
-    # Creates a df with with filename, RA, DEC and System Velocity
-    output_df = pd.DataFrame(
-        output_data, columns=["Name", "RA_string", "Dec_string", "Vsys"]
-    )
-
-    # Add an additional column i.e. the evaluation file
-    # Apply the function to create the new column
-    output_df["evaluation_file"] = output_df["Name"].apply(
-        find_evaluation_file, args=(updated_vis_eval_dict,)
-    )
-
-    # Define the suffix to append to evaluation_file for creating evaluation_file_path
-    suffix = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
-
-    # Create a new column evaluation_file_path by combining evaluation_file with suffix
-    output_df["evaluation_file_path"] = output_df["evaluation_file"].apply(
-        lambda x: x.replace(".tar", f"/{suffix}") if pd.notnull(x) else None
-    )
-
-    # output_csv = os.path.join('.', 'hipass_ms_file_details.csv')
-    # output_df.to_csv(output_csv, index=False, header=True)
-    # print(f"Output saved to {output_csv}")
-
-    output_csv_string = output_df.to_csv(index=False, header=True)
-    return output_csv_string
-
-
 def process_CSV_str(csv_string: str) -> list:
     """
     Processes a CSV string and returns a list of dictionaries.
@@ -2042,6 +985,8 @@ def process_CSV_str(csv_string: str) -> list:
         Dec_string = str(row[2]).strip()
         Vsys = float(row[3])
         evaluation_file = row[5].strip()
+
+        # name,ra_string,dec_string,vsys,,evaluation_file (index 5)
 
         # Create the desired output dictionary
         output_dict = {
