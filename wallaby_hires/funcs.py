@@ -10,6 +10,7 @@ import csv
 import hashlib
 import io
 import json
+import pickle
 from typing import Optional
 
 # Importing required modules
@@ -24,6 +25,36 @@ PRESTAGE_INPUTS_DIR = "inputs"
 
 # Suffix to append to evaluation_file for linmos primary beam path (inside extracted tar)
 EVALUATION_FILE_PATH_SUFFIX = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
+
+
+def _normalize_dlg_csv_string(csv_string) -> str:
+    """
+    CSV DLG Handler
+
+    Memory drops and PyFunc ports supply a str, UTF-8, or a memoryview
+    encoding of pickled or raw bytes this makes it a consistent input.
+    """
+    if csv_string is None:
+        return ""
+    if isinstance(csv_string, str):
+        return csv_string
+    if isinstance(csv_string, memoryview):
+        csv_string = csv_string.tobytes()
+    if isinstance(csv_string, bytearray):
+        csv_string = bytes(csv_string)
+    if isinstance(csv_string, bytes):
+        if len(csv_string) >= 2 and csv_string[0] == 0x80:
+            obj = pickle.loads(csv_string)
+            if isinstance(obj, str):
+                return obj
+            raise TypeError(
+                "Pickled csv_string must unpickle to str, "
+                f"got {type(obj).__name__}"
+            )
+        return csv_string.decode("utf-8")
+    raise TypeError(
+        f"csv_string must be str or buffer, not {type(csv_string).__name__}"
+    )
 
 
 def _download_url_to_path(url: str, path: str, timeout: int = 300) -> None:
@@ -963,12 +994,13 @@ def process_CSV_str(csv_string: str) -> list:
         A list of dictionaries containing the dynamic parsets for imager, imcontsub and
         linmos for all beams of a given HIPASS source.
     """
+    csv_text = _normalize_dlg_csv_string(csv_string)
 
     # List to store the source dictionary
     data = []
 
     # Convert the CSV string to a file-like object
-    csv_file = io.StringIO(csv_string)
+    csv_file = io.StringIO(csv_text)
 
     # Create a CSV reader
     reader = csv.reader(csv_file)
@@ -1032,6 +1064,8 @@ def process_CSV_mosaic_str(csv_string: str) -> list:
         A list of dictionaries containing the dynamic mosaic parset for each processed
         row of the CSV data.
     """
+    csv_text = _normalize_dlg_csv_string(csv_string)
+
     # List to store the source dictionary
     data = []
 
@@ -1040,7 +1074,7 @@ def process_CSV_mosaic_str(csv_string: str) -> list:
     weights_images_string = []
 
     # Convert the CSV string to a file-like object
-    csv_file = io.StringIO(csv_string)
+    csv_file = io.StringIO(csv_text)
 
     # Create a CSV reader
     reader = csv.reader(csv_file)
