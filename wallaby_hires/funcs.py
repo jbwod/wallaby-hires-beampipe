@@ -5,6 +5,9 @@ Description: All functions neeeded for the WALLABY hires test & deploy pipelines
              process the HIPASS sources.
 """
 
+import ast
+import base64
+import binascii
 import concurrent.futures
 import csv
 import hashlib
@@ -329,6 +332,38 @@ def read_and_process_csv(filename: str) -> list:
     return data
 
 
+def _dynamic_buffer_to_obj(buf: bytes):
+    if len(buf) >= 1 and buf[0:1] == b"\x80":
+        return pickle.loads(buf)
+    if len(buf) >= 2 and (buf.startswith(b"b'") or buf.startswith(b'b"')):
+        inner = ast.literal_eval(buf.decode("utf-8"))
+        if isinstance(inner, (bytes, bytearray)):
+            return _dynamic_buffer_to_obj(bytes(inner))
+        raise TypeError(
+            "dynamic_parset bytes-literal payload must decode to bytes, "
+            f"not {type(inner).__name__}"
+        )
+    return json.loads(buf.decode("utf-8"))
+
+
+def _dynamic_str_to_obj(text: str):
+    s = text.strip()
+    if not s:
+        raise TypeError("dynamic_parset string is empty")
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    pad = (-len(s)) % 4
+    try:
+        raw = base64.b64decode(s + "=" * pad)
+    except binascii.Error as e:
+        raise ValueError(
+            "dynamic_parset is not JSON and is not valid base64"
+        ) from e
+    return _dynamic_buffer_to_obj(raw)
+
+
 def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> bytes:
     """
     Update parset with dict values.
@@ -338,7 +373,8 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> byte
     static_parset:
         Standard parset dictionary
     dynamic_parset:
-        List of dictionaries containing key-value pairs to update parset.
+        List of dictionaries containing key-value pairs to update parset, or buffer /
+        string forms from DALiuGE (pickle, UTF-8 JSON, base64, etc.).
     prefix:
         Prefix to filter which keys should be updated.
 
@@ -348,13 +384,9 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> byte
         Binary encoded combined parset.
     """
     if isinstance(dynamic_parset, (bytes, memoryview, bytearray)):
-        buf = bytes(dynamic_parset)
-        if len(buf) >= 1 and buf[0:1] == b"\x80":
-            dynamic_parset = pickle.loads(buf)
-        else:
-            dynamic_parset = json.loads(buf.decode("utf-8"))
+        dynamic_parset = _dynamic_buffer_to_obj(bytes(dynamic_parset))
     elif isinstance(dynamic_parset, str):
-        dynamic_parset = json.loads(dynamic_parset)
+        dynamic_parset = _dynamic_str_to_obj(dynamic_parset)
 
     tolist = getattr(dynamic_parset, "tolist", None)
     if callable(tolist):
