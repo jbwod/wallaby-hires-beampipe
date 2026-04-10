@@ -329,7 +329,7 @@ def read_and_process_csv(filename: str) -> list:
     return data
 
 
-def parset_mixing(static_parset: dict, dynamic_parset: list, prefix: str = "") -> bytes:
+def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> bytes:
     """
     Update parset with dict values.
 
@@ -347,6 +347,12 @@ def parset_mixing(static_parset: dict, dynamic_parset: list, prefix: str = "") -
     bytes
         Binary encoded combined parset.
     """
+    if isinstance(dynamic_parset, (bytes, memoryview, bytearray)):
+        dynamic_parset = pickle.loads(bytes(dynamic_parset))
+    if not isinstance(dynamic_parset, list):
+        raise TypeError(
+            f"dynamic_parset must be list or pickled list bytes, not {type(dynamic_parset).__name__}"
+        )
 
     for item in dynamic_parset:
         for key, value in item.items():
@@ -993,10 +999,9 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_CSV_str(csv_string: str) -> list:
+def process_CSV_str(csv_string: str) -> bytes:
     """
-    Processes a CSV string and returns a list of dictionaries.
-
+    Processes a CSV string and returns a pickled list of parset dictionaries.
     Parameters
     ----------
     csv_string:
@@ -1004,9 +1009,8 @@ def process_CSV_str(csv_string: str) -> list:
 
     Returns
     -------
-    list
-        A list of dictionaries containing the dynamic parsets for imager, imcontsub and
-        linmos for all beams of a given HIPASS source.
+    bytes
+        ``pickle.dumps`` of the list of dictionaries for imager, imcontsub and linmos.
     """
     csv_text = _normalize_dlg_csv_string(csv_string)
 
@@ -1060,13 +1064,12 @@ def process_CSV_str(csv_string: str) -> list:
     else:
         print("Dynamic parsets for imager, imcontsub and linmos created")
 
-    return data
+    return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def process_CSV_mosaic_str(csv_string: str) -> list:
+def process_CSV_mosaic_str(csv_string: str) -> bytes:
     """
-    Processes a CSV string and returns a list of dictionaries.
-
+    Processes a CSV string and returns a pickled list of mosaic parset dictionaries.
     Parameters
     ----------
     csv_string:
@@ -1074,9 +1077,8 @@ def process_CSV_mosaic_str(csv_string: str) -> list:
 
     Returns
     -------
-    list
-        A list of dictionaries containing the dynamic mosaic parset for each processed
-        row of the CSV data.
+    bytes
+        ``pickle.dumps`` of the list of mosaic parset dicts.
     """
     csv_text = _normalize_dlg_csv_string(csv_string)
 
@@ -1135,4 +1137,4 @@ def process_CSV_mosaic_str(csv_string: str) -> list:
     else:
         print("Warning: CSV data is empty.")
 
-    return data
+    return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
