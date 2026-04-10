@@ -348,10 +348,21 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> byte
         Binary encoded combined parset.
     """
     if isinstance(dynamic_parset, (bytes, memoryview, bytearray)):
-        dynamic_parset = pickle.loads(bytes(dynamic_parset))
+        buf = bytes(dynamic_parset)
+        if len(buf) >= 1 and buf[0:1] == b"\x80":
+            dynamic_parset = pickle.loads(buf)
+        else:
+            dynamic_parset = json.loads(buf.decode("utf-8"))
+    elif isinstance(dynamic_parset, str):
+        dynamic_parset = json.loads(dynamic_parset)
+
+    tolist = getattr(dynamic_parset, "tolist", None)
+    if callable(tolist):
+        dynamic_parset = tolist()
+
     if not isinstance(dynamic_parset, list):
         raise TypeError(
-            f"dynamic_parset must be list or pickled list bytes, not {type(dynamic_parset).__name__}"
+            f"dynamic_parset must be list or pickled/JSON buffer, not {type(dynamic_parset).__name__}"
         )
 
     for item in dynamic_parset:
@@ -999,7 +1010,7 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_CSV_str(csv_string: str) -> bytes:
+def process_CSV_str(csv_string: str) -> list:
     """
     Processes a CSV string and returns a pickled list of parset dictionaries.
     Parameters
@@ -1009,8 +1020,8 @@ def process_CSV_str(csv_string: str) -> bytes:
 
     Returns
     -------
-    bytes
-        ``pickle.dumps`` of the list of dictionaries for imager, imcontsub and linmos.
+    list
+        One dict per CSV row (after header) with imager/imcontsub/linmos keys.
     """
     csv_text = _normalize_dlg_csv_string(csv_string)
 
@@ -1064,12 +1075,13 @@ def process_CSV_str(csv_string: str) -> bytes:
     else:
         print("Dynamic parsets for imager, imcontsub and linmos created")
 
-    return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+    return data
 
 
 def process_CSV_mosaic_str(csv_string: str) -> bytes:
     """
-    Processes a CSV string and returns a pickled list of mosaic parset dictionaries.
+    Processes a CSV string and returns strict UTF-8 JSON bytes
+
     Parameters
     ----------
     csv_string:
@@ -1078,7 +1090,7 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
     Returns
     -------
     bytes
-        ``pickle.dumps`` of the list of mosaic parset dicts.
+        UTF-8 encoded JSON array of mosaic parset objects.
     """
     csv_text = _normalize_dlg_csv_string(csv_string)
 
@@ -1137,4 +1149,4 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
     else:
         print("Warning: CSV data is empty.")
 
-    return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
