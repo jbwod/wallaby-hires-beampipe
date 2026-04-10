@@ -163,7 +163,7 @@
                 },
                 {
                     "name": "input_parser",
-                    "value": "path",
+                    "value": "pickle",
                     "defaultValue": "pickle",
                     "description": "Input port parsing technique",
                     "readonly": false,
@@ -230,7 +230,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "utf-8",
+                    "encoding": "pickle",
                     "id": "4fc2c313-8992-4fcf-acf2-79b333cb3299",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -623,7 +623,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "utf-8",
+                    "encoding": "pickle",
                     "id": "1d9fc7f9-13a6-472a-afc2-212c2ec52c5c",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"

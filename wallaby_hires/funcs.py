@@ -38,6 +38,17 @@ def _normalize_dlg_csv_string(csv_string) -> str:
         return ""
     if isinstance(csv_string, str):
         return csv_string
+    if isinstance(csv_string, tuple):
+        if (
+            len(csv_string) == 4
+            and isinstance(csv_string[0], str)
+            and isinstance(csv_string[1], str)
+        ):
+            return csv_string[1]
+        raise TypeError(
+            "csv_string out prestage_manifest_inputs, "
+            f"got length {len(csv_string)}"
+        )
     if isinstance(csv_string, memoryview):
         csv_string = csv_string.tobytes()
     if isinstance(csv_string, bytearray):
@@ -47,8 +58,11 @@ def _normalize_dlg_csv_string(csv_string) -> str:
             obj = pickle.loads(csv_string)
             if isinstance(obj, str):
                 return obj
+            if isinstance(obj, tuple) and len(obj) == 4:
+                if isinstance(obj[1], str):
+                    return obj[1]
             raise TypeError(
-                "Pickled csv_string must unpickle to str, "
+                f"(credentials_path, csv_string, ms_urls_json, eval_urls_json); "
                 f"got {type(obj).__name__}"
             )
         return csv_string.decode("utf-8")
