@@ -364,7 +364,7 @@ def _dynamic_str_to_obj(text: str):
     return _dynamic_buffer_to_obj(raw)
 
 
-def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> bytes:
+def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
     """
     Update parset with dict values.
 
@@ -373,15 +373,15 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> byte
     static_parset:
         Standard parset dictionary
     dynamic_parset:
-        List of dictionaries containing key-value pairs to update parset, or buffer /
-        string forms from DALiuGE (pickle, UTF-8 JSON, base64, etc.).
+        List of dictionaries containing key-value pairs to update parset.
     prefix:
         Prefix to filter which keys should be updated.
 
     Returns
     -------
-    bytes
-        Binary encoded combined parset.
+    str
+        One ``key=value`` per line, UTF-8 text. Use graph ``merged_dict`` port
+        encoding ``utf-8`` so PyFunc writes text (not ``repr`` of bytes).
     """
     if isinstance(dynamic_parset, (bytes, memoryview, bytearray)):
         dynamic_parset = _dynamic_buffer_to_obj(bytes(dynamic_parset))
@@ -423,7 +423,7 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> byte
 
     serialp = "\n".join([f"{x}={y['value']}" for x, y in static_parset.items()])
 
-    return serialp.encode("utf-8")
+    return serialp
 
 
 # Code to download files from casda
@@ -1042,9 +1042,17 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_CSV_str(csv_string: str) -> list:
+def process_CSV_str(csv_string: str) -> bytes:
     """
-    Processes a CSV string and returns a pickled list of parset dictionaries.
+    Processes a CSV string into a list of parset dicts, then returns **pickle
+    bytes** of that list.
+
+    PyFunc ``_match_parser`` uses the **output port** encoding; if it does not
+    match the drop, the engine defaults to **dill** and scatter reads **pickle**.
+    Returning explicit pickle bytes with graph ports ``source_list`` /
+    InMemory / GenericScatterApp ``array`` all set to **raw** avoids that
+    mismatch and matches ``GenericScatterApp`` (``pickle.loads`` on raw bytes).
+
     Parameters
     ----------
     csv_string:
@@ -1052,8 +1060,8 @@ def process_CSV_str(csv_string: str) -> list:
 
     Returns
     -------
-    list
-        One dict per CSV row (after header) with imager/imcontsub/linmos keys.
+    bytes
+        ``pickle.dumps`` of the list of per-row parset dicts.
     """
     csv_text = _normalize_dlg_csv_string(csv_string)
 
@@ -1107,7 +1115,7 @@ def process_CSV_str(csv_string: str) -> list:
     else:
         print("Dynamic parsets for imager, imcontsub and linmos created")
 
-    return data
+    return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def process_CSV_mosaic_str(csv_string: str) -> bytes:

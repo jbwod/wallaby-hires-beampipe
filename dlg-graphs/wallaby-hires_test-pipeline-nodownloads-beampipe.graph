@@ -185,7 +185,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "raw",
                     "defaultValue": "pickle",
                     "description": "Output port parsing technique Mapping from argname to default value. Should match only the last part of the argnames list. Values are interpreted as Python code literals and that means string values need to be quoted.",
                     "readonly": false,
@@ -215,7 +215,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "raw",
                     "id": "20cc7eed-9573-4188-8c00-129d10e6215d",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -396,7 +396,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "raw",
                     "id": "df5a010d-f552-4e04-ac94-eecfdf327ddc",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -729,7 +729,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "b5cf9561-aaa7-415e-a82a-3ada2f2afcf1",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -1344,7 +1344,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "7b98c2d7-20c8-4c84-bbad-12712512bf21",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -2024,7 +2024,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "raw",
                     "id": "53c95301-73f0-41b8-a87c-233f313e90c0",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -2130,7 +2130,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "29d7724c-8e21-4597-9208-ec9c6d468339",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -2386,7 +2386,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "56ca89a9-204b-4fcb-8a35-fbb6e773b20d",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -2702,7 +2702,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "febe132e-faea-4510-a4a1-e04594cf1980",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -2794,7 +2794,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "22212b33-796f-4725-b0de-14d19f36f7f0",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -3110,7 +3110,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "77e049cf-d937-463b-a298-34bbb8b5a53e",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -3277,7 +3277,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "8f0050e2-efc2-4de2-9c4e-ce7cd9830f57",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
