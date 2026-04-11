@@ -1081,11 +1081,27 @@ def process_CSV_str(csv_string: str) -> bytes:
     for row in reader:
 
         # Extract individual parameters
-        name = str(row[0]).strip()
-        RA_string = str(row[1]).strip()
-        Dec_string = str(row[2]).strip()
-        Vsys = float(row[3])
-        evaluation_file = row[5].strip()
+        try:
+            name = str(row[0]).strip()
+        except Exception as e:
+            raise ValueError(f"Missing or invalid 'name' (row[0]): {e}")
+        try:
+            RA_string = str(row[1]).strip()
+        except Exception as e:
+            raise ValueError(f"Missing or invalid 'RA_string' (row[1]): {e}")
+        try:
+            Dec_string = str(row[2]).strip()
+        except Exception as e:
+            raise ValueError(f"Missing or invalid 'Dec_string' (row[2]): {e}")
+        try:
+            Vsys = float(row[3])
+        except Exception as e:
+            raise ValueError(f"Missing or invalid 'Vsys' (row[3]): {e}")
+        try:
+            evaluation_file = row[5].strip()
+        except Exception as e:
+            raise ValueError(f"Missing or invalid 'evaluation_file' (row[5]): {e}")
+   
 
         # name,ra_string,dec_string,vsys,,evaluation_file (index 5)
 
