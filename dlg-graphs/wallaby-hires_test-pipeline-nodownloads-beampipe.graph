@@ -2048,7 +2048,7 @@
             "outputAppFields": [],
             "inputApplicationName": "GenericScatterApp",
             "inputApplicationType": "DALiuGEApp",
-            "inputApplicationId": "647f3488-77fe-46d8-ab5a-44bd92eae733",
+            "inputApplicationId": "955738ab-fe0b-4aab-82c1-bd306f3e06c2",
             "inputApplicationDescription": "",
             "inputApplicationComment": "",
             "outputApplicationName": "",
@@ -6575,7 +6575,7 @@
                 {
                     "name": "func_code",
                     "value": "import pickle\n\ndef beampipe_ingest(manifest_path: str) -> bytes:\n    if not manifest_path:\n        return pickle.dumps(b'{}')\n    s = manifest_path.strip()\n    if s.startswith('{') and s.endswith('}'):\n        raw = s.encode('utf-8')\n    else:\n        with open(manifest_path, 'rb') as f:\n            raw = f.read()\n    return pickle.dumps(raw)",
-                    "defaultValue": "def beampipe_ingest(manifest_path: str) -> bytes:\n    \"\"\"When embedded at submit, no file upload needed.\"\"\"\n    if not manifest_path:\n        return b'{}'\n    s = manifest_path.strip()\n    if s.startswith('{') and s.endswith('}'):\n        return s.encode('utf-8')\n    with open(manifest_path, 'rb') as f:\n        return f.read()",
+                    "defaultValue": "import pickle\n\ndef beampipe_ingest(manifest_path: str) -> bytes:\n    if not manifest_path:\n        return pickle.dumps(b'{}')\n    s = manifest_path.strip()\n    if s.startswith('{') and s.endswith('}'):\n        raw = s.encode('utf-8')\n    else:\n        with open(manifest_path, 'rb') as f:\n            raw = f.read()\n    return pickle.dumps(raw)",
                     "description": "Input: file path (from File drop) or inline JSON string (set at submit so manifest is inside the graph, no second file).",
                     "readonly": false,
                     "type": "String",
