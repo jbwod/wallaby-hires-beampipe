@@ -22,9 +22,17 @@ import re
 import tarfile
 import urllib
 import urllib.request
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlparse
 
 PRESTAGE_INPUTS_DIR = "inputs"
+
+
+class ManifestDownloadError(RuntimeError):
+    """
+    Raised when a manifest-URL download fails (HTTP error, timeout, incomplete file).
+    Propagates to DALiuGE so the run is marked failed for tracking.
+    """
 
 # Suffix to append to evaluation_file for linmos primary beam path (inside extracted tar)
 EVALUATION_FILE_PATH_SUFFIX = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
@@ -502,6 +510,13 @@ def download_file(
     -------
     str
         The path of the downloaded file.
+
+    Raises
+    ------
+    ManifestDownloadError
+        On HTTP errors (e.g. 403 expired URL), network/URL errors, timeout, or
+        incomplete transfer. Unhandled, this fails the DALiuGE app so the run is
+        marked failed.
     """
 
     # Large timeout is necessary as the file may need to be staged from tape
@@ -512,66 +527,82 @@ def download_file(
         pass
 
     if url is None:
-        raise ValueError("URL is empty")
+        raise ManifestDownloadError("URL is empty")
 
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        filename = r.info().get_filename()
-        if not filename:
-            parsed = urlparse(url)
-            for val in parse_qs(parsed.query).get("response-content-disposition", []):
-                m = re.search(r'filename="?([^";]+)"?', val)
-                if m:
-                    filename = unquote(m.group(1))
-                    break
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            filename = r.info().get_filename()
             if not filename:
-                filename = os.path.basename(parsed.path.rstrip("/")) or "download"
-        filepath = f"{output}/{filename}"
+                parsed = urlparse(url)
+                for val in parse_qs(parsed.query).get(
+                    "response-content-disposition", []
+                ):
+                    m = re.search(r'filename="?([^";]+)"?', val)
+                    if m:
+                        filename = unquote(m.group(1))
+                        break
+                if not filename:
+                    filename = os.path.basename(parsed.path.rstrip("/")) or "download"
+            filepath = f"{output}/{filename}"
 
-        # Check if file already exists, and modify the filename if necessary
-        if os.path.exists(filepath):
-            base, ext = filename.rsplit("_10arc_split", 1)
-            counter = 2
-            new_filepath = filepath
+            # Check if file already exists, and modify the filename if necessary
+            if os.path.exists(filepath):
+                base, ext = filename.rsplit("_10arc_split", 1)
+                counter = 2
+                new_filepath = filepath
 
-            # Continue incrementing the filename until a unique one is found
-            while os.path.exists(new_filepath):
-                new_filename = f"{base}_10arc_split_{counter}{ext}"
-                new_filepath = f"{output}/{new_filename}"
-                counter += 1
-            filepath = new_filepath
+                # Continue incrementing the filename until a unique one is found
+                while os.path.exists(new_filepath):
+                    new_filename = f"{base}_10arc_split_{counter}{ext}"
+                    new_filepath = f"{output}/{new_filename}"
+                    counter += 1
+                filepath = new_filepath
 
-        http_size = int(r.info()["Content-Length"])
+            http_size = int(r.info()["Content-Length"])
 
-        if check_exists:
-            try:
-                file_size = os.path.getsize(filepath)
-                if file_size == http_size:
-                    print(f"File exists, ignoring: {os.path.basename(filepath)}")
-                    # _verify_checksum(filepath, checksum_url or "", timeout)
-                    return filepath
-            except FileNotFoundError:
-                pass
+            if check_exists:
+                try:
+                    file_size = os.path.getsize(filepath)
+                    if file_size == http_size:
+                        print(f"File exists, ignoring: {os.path.basename(filepath)}")
+                        # _verify_checksum(filepath, checksum_url or "", timeout)
+                        return filepath
+                except FileNotFoundError:
+                    pass
 
-        print(f"Downloading: {filepath} size: {http_size}")
-        count = 0
-        with open(filepath, "wb") as o:
-            while http_size > count:
-                buff = r.read(buffer)
-                if not buff:
-                    break
-                o.write(buff)
-                count += len(buff)
+            print(f"Downloading: {filepath} size: {http_size}")
+            count = 0
+            with open(filepath, "wb") as o:
+                while http_size > count:
+                    buff = r.read(buffer)
+                    if not buff:
+                        break
+                    o.write(buff)
+                    count += len(buff)
 
-        download_size = os.path.getsize(filepath)
-        if http_size != download_size:
-            raise ValueError(
-                f"File size does not match file {download_size} and http {http_size}"
-            )
+            download_size = os.path.getsize(filepath)
+            if http_size != download_size:
+                raise ManifestDownloadError(
+                    f"Incomplete download for {url!r}: got {download_size} bytes, "
+                    f"expected {http_size}"
+                )
 
-        print(f"Download complete: {os.path.basename(filepath)}")
-        # _verify_checksum(filepath, checksum_url or "", timeout)
+            print(f"Download complete: {os.path.basename(filepath)}")
+            # _verify_checksum(filepath, checksum_url or "", timeout)
 
-        return filepath
+            return filepath
+    except HTTPError as e:
+        raise ManifestDownloadError(
+            f"HTTP {e.code} {e.reason!r} for URL {url!r}"
+        ) from e
+    except URLError as e:
+        raise ManifestDownloadError(
+            f"Network error for URL {url!r}: {e.reason!r}"
+        ) from e
+    except TimeoutError as e:
+        raise ManifestDownloadError(
+            f"Timed out after {timeout}s for URL {url!r}"
+        ) from e
 
 
 # Function to un-tar files
@@ -841,6 +872,12 @@ def download_data_ms(
     Returns
     -------
     None
+
+    Raises
+    ------
+    ManifestDownloadError
+        If any manifest URL fails (HTTP error, timeout, etc.). Stops other parallel
+        downloads and fails the step for run tracking.
     """
     ms_urls_json = _normalize_urls_json_arg(ms_urls_json, 2)
     if not ms_urls_json:
@@ -857,7 +894,9 @@ def download_data_ms(
                 "checksum_url": u.get("checksum_url") or "",
             })
     file_list = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    failed = False
+    try:
         futures = [
             executor.submit(
                 download_file,
@@ -871,6 +910,11 @@ def download_data_ms(
         ]
         for future in concurrent.futures.as_completed(futures):
             file_list.append(future.result())
+    except Exception:
+        failed = True
+        raise
+    finally:
+        executor.shutdown(wait=not failed, cancel_futures=failed)
     for file in file_list:
         if file.endswith(".tar") and tarfile.is_tarfile(file):
             untar_file(file, ".")
@@ -910,6 +954,11 @@ def download_data_eval(
     Returns
     -------
     None
+
+    Raises
+    ------
+    ManifestDownloadError
+        If any manifest URL fails (HTTP error, timeout, etc.).
     """
     eval_urls_json = _normalize_urls_json_arg(eval_urls_json, 3)
     if not eval_urls_json:
