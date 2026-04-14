@@ -30,6 +30,43 @@ PRESTAGE_INPUTS_DIR = "inputs"
 EVALUATION_FILE_PATH_SUFFIX = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
 
 
+def _unwrap_dlg_port_layer(value):
+    """
+    Decode for DALiuGE Memory
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, tuple):
+        return value
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    elif isinstance(value, bytearray):
+        value = bytes(value)
+    elif not isinstance(value, bytes):
+        raise TypeError(
+            f"expected str, tuple, or buffer, got {type(value).__name__}"
+        )
+    if len(value) >= 2 and value[0] == 0x80:
+        return pickle.loads(value)
+    return value.decode("utf-8")
+
+
+def _peel_dlg_port_to_str_or_tuple(value):
+    """
+    Follow pickle
+    """
+    while True:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, tuple):
+            return value
+        value = _unwrap_dlg_port_layer(value)
+
+
 def _normalize_dlg_csv_string(csv_string) -> str:
     """
     CSV DLG Handler
@@ -39,39 +76,43 @@ def _normalize_dlg_csv_string(csv_string) -> str:
     """
     if csv_string is None:
         return ""
-    if isinstance(csv_string, str):
-        return csv_string
-    if isinstance(csv_string, tuple):
+    obj = _peel_dlg_port_to_str_or_tuple(csv_string)
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, tuple):
         if (
-            len(csv_string) == 4
-            and isinstance(csv_string[0], str)
-            and isinstance(csv_string[1], str)
+            len(obj) == 4
+            and isinstance(obj[0], str)
+            and isinstance(obj[1], str)
         ):
-            return csv_string[1]
+            return obj[1]
         raise TypeError(
             "csv_string out prestage_manifest_inputs, "
-            f"got length {len(csv_string)}"
+            f"got length {len(obj)}"
         )
-    if isinstance(csv_string, memoryview):
-        csv_string = csv_string.tobytes()
-    if isinstance(csv_string, bytearray):
-        csv_string = bytes(csv_string)
-    if isinstance(csv_string, bytes):
-        if len(csv_string) >= 2 and csv_string[0] == 0x80:
-            obj = pickle.loads(csv_string)
-            if isinstance(obj, str):
-                return obj
-            if isinstance(obj, tuple) and len(obj) == 4:
-                if isinstance(obj[1], str):
-                    return obj[1]
-            raise TypeError(
-                f"(credentials_path, csv_string, ms_urls_json, eval_urls_json); "
-                f"got {type(obj).__name__}"
-            )
-        return csv_string.decode("utf-8")
-    raise TypeError(
-        f"csv_string must be str or buffer, not {type(csv_string).__name__}"
-    )
+
+
+def _normalize_urls_json_arg(value, tuple_index: int) -> str:
+    """
+    DLG handler for JSON
+    """
+    if value is None:
+        return ""
+    obj = _peel_dlg_port_to_str_or_tuple(value)
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, tuple):
+        if len(obj) == 4 and tuple_index in (2, 3):
+            cell = obj[tuple_index]
+            return cell if isinstance(cell, str) else str(cell)
+        raise TypeError(
+            "Expected prestage 4-tuple (credentials, csv, ms_urls_json, eval_urls_json) "
+            f"or a JSON str; got tuple of length {len(obj)}"
+        )
 
 
 def _download_url_to_path(url: str, path: str, timeout: int = 300) -> None:
@@ -801,6 +842,7 @@ def download_data_ms(
     -------
     None
     """
+    ms_urls_json = _normalize_urls_json_arg(ms_urls_json, 2)
     if not ms_urls_json:
         raise ValueError("manifest input required; ms_urls_json must be provided")
     raw = json.loads(ms_urls_json)
@@ -869,6 +911,7 @@ def download_data_eval(
     -------
     None
     """
+    eval_urls_json = _normalize_urls_json_arg(eval_urls_json, 3)
     if not eval_urls_json:
         raise ValueError("manifest input required; eval_urls_json must be provided")
     raw = json.loads(eval_urls_json)
