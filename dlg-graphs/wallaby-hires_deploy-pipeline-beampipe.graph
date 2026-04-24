@@ -163,7 +163,7 @@
                 },
                 {
                     "name": "input_parser",
-                    "value": "path",
+                    "value": "pickle",
                     "defaultValue": "pickle",
                     "description": "Input port parsing technique",
                     "readonly": false,
@@ -185,7 +185,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "raw",
                     "defaultValue": "pickle",
                     "description": "Output port parsing technique Mapping from argname to default value. Should match only the last part of the argnames list. Values are interpreted as Python code literals and that means string values need to be quoted.",
                     "readonly": false,
@@ -392,7 +392,7 @@
                     "defaultValue": "",
                     "description": "",
                     "readonly": false,
-                    "type": "String",
+                    "type": "Object",
                     "precious": false,
                     "options": [],
                     "positional": false,
@@ -602,7 +602,7 @@
                     "defaultValue": "",
                     "description": "",
                     "readonly": false,
-                    "type": "String",
+                    "type": "Object",
                     "precious": false,
                     "options": [
                         ""
@@ -1193,7 +1193,7 @@
             "description": "A standard file on a filesystem mounted to the deployment machine",
             "comment": "",
             "x": 2336.8066234254434,
-            "y": 2738.285590405843,
+            "y": 2740.087236686179,
             "repositoryUrl": "https://github.com/ICRAR/daliuge",
             "commitHash": "11a664f",
             "paletteDownloadUrl": "https://raw.githubusercontent.com/ICRAR/EAGLE-graph-repo/master/daliuge/daliuge-master.palette",
@@ -5642,7 +5642,7 @@
                     "defaultValue": "",
                     "description": "",
                     "readonly": false,
-                    "type": "String",
+                    "type": "Object",
                     "precious": false,
                     "options": [],
                     "positional": false,
