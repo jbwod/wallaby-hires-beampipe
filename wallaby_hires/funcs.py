@@ -529,6 +529,15 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = ""):
                 beam_root = str(item.get(key) or "").strip()
                 break
 
+    if beam_root:
+        tool_dir = {
+            "Cimager": "imager",
+            "imcontsub": "imcontsub",
+            "linmos": "linmos",
+        }.get(prefix, "")
+        if tool_dir:
+            os.makedirs(os.path.join(beam_root, tool_dir), exist_ok=True)
+
     for item in dynamic_parset:
         for key, value in item.items():
             if prefix:
@@ -555,7 +564,7 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = ""):
 
     serialp = "\n".join([f"{x}={y['value']}" for x, y in static_parset.items()])
 
-    return serialp, beam_root
+    return {"merged_dict": serialp, "beam_root": beam_root}
 
 
 # Code to download files from casda
