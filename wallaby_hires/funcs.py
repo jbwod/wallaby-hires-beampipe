@@ -488,7 +488,7 @@ def _dynamic_str_to_obj(text: str):
     return _dynamic_buffer_to_obj(raw)
 
 
-def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = ""):
+def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
     """
     Update parset with dict values.
 
@@ -564,7 +564,37 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = ""):
 
     serialp = "\n".join([f"{x}={y['value']}" for x, y in static_parset.items()])
 
-    return {"merged_dict": serialp, "beam_root": beam_root}
+    return serialp
+
+
+def extract_beam_root(dynamic_parset, prefix: str) -> str:
+    if isinstance(dynamic_parset, (bytes, memoryview, bytearray)):
+        dynamic_parset = _dynamic_buffer_to_obj(bytes(dynamic_parset))
+    elif isinstance(dynamic_parset, str):
+        dynamic_parset = _dynamic_str_to_obj(dynamic_parset)
+
+    tolist = getattr(dynamic_parset, "tolist", None)
+    if callable(tolist):
+        dynamic_parset = tolist()
+
+    if not isinstance(dynamic_parset, list):
+        raise TypeError(
+            f"dynamic_parset must be list or pickled/JSON buffer, not {type(dynamic_parset).__name__}"
+        )
+    key = f"{prefix}.beam_root"
+    for item in dynamic_parset:
+        if isinstance(item, dict) and key in item:
+            beam_root = str(item.get(key) or "").strip()
+            if beam_root:
+                tool_dir = {
+                    "Cimager": "imager",
+                    "imcontsub": "imcontsub",
+                    "linmos": "linmos",
+                }.get(prefix, "")
+                if tool_dir:
+                    os.makedirs(os.path.join(beam_root, tool_dir), exist_ok=True)
+            return beam_root
+    return ""
 
 
 # Code to download files from casda
