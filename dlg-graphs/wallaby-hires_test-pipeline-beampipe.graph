@@ -6582,7 +6582,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "path",
+                    "encoding": "pickle",
                     "id": "725cd655-0886-45f4-858a-b405275ad110",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -6763,7 +6763,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "path",
+                    "encoding": "pickle",
                     "id": "cacfb280-dcda-4605-8126-38e9d29bfc3f",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
