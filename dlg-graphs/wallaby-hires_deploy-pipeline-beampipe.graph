@@ -1924,7 +1924,7 @@
             "fields": [
                 {
                     "name": "num_of_copies",
-                    "value": 6,
+                    "value": 2,
                     "defaultValue": "6",
                     "description": "Specifies the number of replications that will be generated of the scatter construct's contents.",
                     "readonly": false,
@@ -2033,7 +2033,7 @@
             "outputAppFields": [],
             "inputApplicationName": "GenericScatterApp",
             "inputApplicationType": "DALiuGEApp",
-            "inputApplicationId": "eff846dd-75ca-463c-9356-1d5f902bdfe6",
+            "inputApplicationId": "135148fb-46a2-45d2-a07a-58a88235daf6",
             "inputApplicationDescription": "",
             "inputApplicationComment": "",
             "outputApplicationName": "",
