@@ -2033,7 +2033,7 @@
             "outputAppFields": [],
             "inputApplicationName": "GenericScatterApp",
             "inputApplicationType": "DALiuGEApp",
-            "inputApplicationId": "1a0edfa7-8cf2-459a-ac3d-0da70c9bec02",
+            "inputApplicationId": "aff99360-d73a-4d18-856d-2f2c49a9d849",
             "inputApplicationDescription": "",
             "inputApplicationComment": "",
             "outputApplicationName": "",
@@ -8189,7 +8189,7 @@
                 },
                 {
                     "name": "staging_root",
-                    "value": "",
+                    "value": "$DLG_ROOT/staged_data/casda",
                     "defaultValue": "",
                     "description": "Shared staging root for cached tar downloads (optional).",
                     "readonly": false,
@@ -8385,7 +8385,7 @@
                 },
                 {
                     "name": "staging_root",
-                    "value": "",
+                    "value": "$DLG_ROOT/staged_data/casda",
                     "defaultValue": "",
                     "description": "Shared staging root for cached tar downloads (optional).",
                     "readonly": false,
