@@ -18,6 +18,7 @@ from .funcs import (
     process_CSV_str,
     read_and_process_csv,
     untar_file,
+    extract_beam_root,
 )
 __all__ = [
     "download_data_eval",
@@ -35,4 +36,5 @@ __all__ = [
     "process_CSV_str",
     "read_and_process_csv",
     "untar_file",
+    "extract_beam_root",
 ]
