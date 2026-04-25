@@ -215,7 +215,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "raw",
+                    "encoding": "pickle",
                     "id": "20cc7eed-9573-4188-8c00-129d10e6215d",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -2009,7 +2009,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "raw",
+                    "encoding": "pickle",
                     "id": "53c95301-73f0-41b8-a87c-233f313e90c0",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
