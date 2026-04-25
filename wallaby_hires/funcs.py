@@ -147,11 +147,11 @@ def _fetch_checksum_to_workspace(checksum_url: str, timeout: int = 300) -> tuple
     """
     if not checksum_url or not str(checksum_url).strip():
         return "", ""
-    with urllib.request.urlopen(checksum_url, timeout=timeout) as r:
-        content = r.read().decode("utf-8", errors="replace").strip()
     parsed = urlparse(checksum_url)
     name = os.path.basename(parsed.path) or "download.checksum"
     local_path = os.path.join(os.getcwd(), CHECKSUMS_DIR, name)
+    with urllib.request.urlopen(checksum_url, timeout=timeout) as r:
+        content = r.read().decode("utf-8", errors="replace").strip()
     _write_text_atomic(local_path, content + "\n")
     parts = content.split()
     expected = (parts[0] if parts else "").strip().lower()
@@ -618,21 +618,9 @@ def download_file(
                     filename = os.path.basename(parsed.path.rstrip("/")) or "download"
             filepath = f"{output}/{filename}"
 
-            # Check if file already exists, and modify the filename if necessary
-            if os.path.exists(filepath):
-                base, ext = filename.rsplit("_10arc_split", 1)
-                counter = 2
-                new_filepath = filepath
-
-                # Continue incrementing the filename until a unique one is found
-                while os.path.exists(new_filepath):
-                    new_filename = f"{base}_10arc_split_{counter}{ext}"
-                    new_filepath = f"{output}/{new_filename}"
-                    counter += 1
-                filepath = new_filepath
-
             http_size = int(r.info()["Content-Length"])
 
+            should_overwrite = False
             if check_exists:
                 try:
                     if os.path.exists(filepath):
@@ -653,13 +641,21 @@ def download_file(
                                     f"Checksum mismatch re-downloading: {os.path.basename(filepath)} "
                                     f"(expected {expected_hex}, got {actual_hex})"
                                 )
+                                should_overwrite = True
                         else:
                             file_size = os.path.getsize(filepath)
                             if file_size == http_size:
                                 print(f"File exists ignoring: {os.path.basename(filepath)}")
                                 return filepath
+                            should_overwrite = True
                 except FileNotFoundError:
                     pass
+
+            target_path = filepath
+            tmp_path = None
+            if should_overwrite and os.path.exists(target_path):
+                tmp_path = f"{target_path}.tmp"
+                filepath = tmp_path
 
             print(f"Downloading: {filepath} size: {http_size}")
             count = 0
@@ -677,6 +673,10 @@ def download_file(
                     f"Incomplete download for {url!r}: got {download_size} bytes, "
                     f"expected {http_size}"
                 )
+
+            if tmp_path:
+                os.replace(tmp_path, target_path)
+                filepath = target_path
 
             print(f"Download complete: {os.path.basename(filepath)}")
             if checksum_url and str(checksum_url).strip():
