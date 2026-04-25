@@ -1248,7 +1248,7 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_CSV_str(csv_string: str) -> bytes:
+def process_CSV_str(csv_string: str) -> list:
     """
     Processes a CSV string into a list of parset dicts, then returns **pickle
     bytes** of that list.
@@ -1266,8 +1266,8 @@ def process_CSV_str(csv_string: str) -> bytes:
 
     Returns
     -------
-    bytes
-        ``pickle.dumps`` of the list of per-row parset dicts.
+    list
+        List of per-row parset dictionaries.
     """
     csv_text = _normalize_dlg_csv_string(csv_string)
 
@@ -1337,7 +1337,7 @@ def process_CSV_str(csv_string: str) -> bytes:
     else:
         print("Dynamic parsets for imager, imcontsub and linmos created")
 
-    return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+    return data
 
 
 def process_CSV_mosaic_str(csv_string: str) -> bytes:
