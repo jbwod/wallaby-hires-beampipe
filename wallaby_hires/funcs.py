@@ -264,7 +264,7 @@ def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
 
 def _build_csv_string_from_dataset_rows(rows: list) -> str:
     """
-    Build CSV string with header Name,RA_string,Dec_string,Vsys,,evaluation_file_path
+    Build CSV string with header Name,RA_string,Dec_string,Vsys,,evaluation_file_path,source_identifier,sbid
     so process_CSV_str (column index 5 = evaluation_file_path) and process_CSV_mosaic_str
     get expected format. Column 5 is the path to the primary beam FITS inside the tar,
     matching original process_data/process_SOURCE output.
@@ -272,7 +272,7 @@ def _build_csv_string_from_dataset_rows(rows: list) -> str:
     """
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Name", "RA_string", "Dec_string", "Vsys", "", "evaluation_file"])
+    writer.writerow(["Name", "RA_string", "Dec_string", "Vsys", "", "evaluation_file", "source_identifier", "sbid"])
     for r in rows:
         vsys = r.get("vsys")
         vsys_str = "" if vsys is None else str(vsys)
@@ -290,6 +290,8 @@ def _build_csv_string_from_dataset_rows(rows: list) -> str:
             vsys_str,
             "",
             eval_file_path,
+            r.get("source_identifier", ""),
+            r.get("sbid", ""),
         ])
     return buf.getvalue()
 
@@ -725,19 +727,20 @@ def untar_file(tar_file: str, output_dir: str = "."):
 
     """
     try:
-        # Extract the filename without the '.tar' extension to create a new directory
-        base_name = os.path.basename(tar_file).replace(".tar", "")
-        extract_dir = os.path.join(output_dir, base_name)
-
-        # Create the target directory for extraction
-        os.makedirs(extract_dir, exist_ok=True)
-
+        os.makedirs(output_dir, exist_ok=True)
         with tarfile.open(tar_file) as tar:
-            tar.extractall(path=extract_dir)
-            print(f"{tar_file} un-tarred to {extract_dir}")
+            tar.extractall(path=output_dir)
+            print(f"{tar_file} un-tarred to {output_dir}")
 
     except Exception as e:
         print(f"Failed to untar {tar_file}: {e}")
+
+
+def _beam_dir_from_ms_tar_name(name: str) -> str:
+    m = re.search(r"_beam(\\d+)_", name or "")
+    if not m:
+        return "beam"
+    return f"beam{int(m.group(1))}"
 
 
 def degrees_to_hms(degrees: float) -> tuple:
@@ -1025,7 +1028,21 @@ def download_data_ms(
         executor.shutdown(wait=not failed, cancel_futures=failed)
     for file in file_list:
         if file.endswith(".tar") and tarfile.is_tarfile(file):
-            untar_file(file, ".")
+            base = os.path.basename(file)
+            ms_name = base[: -len(".tar")] if base.endswith(".tar") else base
+            extract_root = os.getcwd()
+            # try to find item metadata by filename match
+            src = ""
+            sbid = ""
+            for it in items:
+                if isinstance(it, dict) and ms_name in str(it.get("url") or ""):
+                    src = it.get("source_identifier") or ""
+                    sbid = it.get("sbid") or ""
+                    break
+            if src and sbid:
+                beam_dir = _beam_dir_from_ms_tar_name(ms_name)
+                extract_root = os.path.join(os.getcwd(), src, str(sbid), beam_dir)
+            untar_file(file, extract_root)
     print(".ms files downloaded (from manifest URLs)")
 
 
@@ -1097,7 +1114,12 @@ def download_data_eval(
             checksum_url=item["checksum_url"] or None,
         )
         if path.endswith(".tar") and tarfile.is_tarfile(path):
-            untar_file(path, ".")
+            src = item.get("source_identifier") or ""
+            sbid = item.get("sbid") or ""
+            extract_root = os.getcwd()
+            if src and sbid:
+                extract_root = os.path.join(os.getcwd(), src, str(sbid), "eval")
+            untar_file(path, extract_root)
     print("Evaluation files downloaded (from manifest URLs)")
 
 
@@ -1311,13 +1333,32 @@ def process_CSV_str(csv_string: str) -> list:
 
         # name,ra_string,dec_string,vsys,,evaluation_file (index 5)
 
+        source_identifier = ""
+        sbid = ""
+        if len(row) >= 8:
+            source_identifier = str(row[6]).strip()
+            sbid = str(row[7]).strip()
+        ms_name = name
+        if ms_name.endswith(".tar"):
+            ms_name = ms_name[: -len(".tar")]
+        beam_dir = _beam_dir_from_ms_tar_name(ms_name)
+        if source_identifier and sbid:
+            beam_root = os.path.join(source_identifier, str(sbid), beam_dir)
+            dataset_path = os.path.join(beam_root, ms_name, ms_name)
+            # evaluation_file is path inside eval tar; we extract eval into ./{source}/{sbid}/eval/
+            evaluation_file = os.path.join(source_identifier, str(sbid), "eval", evaluation_file)
+        else:
+            dataset_path = os.path.join(ms_name, ms_name)
+
         # Create the desired output dictionary
         output_dict = {
-            "Cimager.dataset": f"$DLG_ROOT/testdata/{name}.ms",
+            "Cimager.dataset": dataset_path,
+            "Cimager.beam_root": beam_root if (source_identifier and sbid) else "",
             "Cimager.Images.Names": f"[image.{name}]",
             "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
             "Cimager.write.weightsimage": "true",
             "Vsys": Vsys,
+            "imcontsub.beam_root": beam_root if (source_identifier and sbid) else "",
             "imcontsub.inputfitscube": f"image.restored.{name}",
             "imcontsub.outputfitscube": f"image.restored.{name}.contsub",
             "linmos.names": f"[image.restored.{name}.contsub]",
@@ -1326,6 +1367,7 @@ def process_CSV_str(csv_string: str) -> list:
             "linmos.outweight": f"weights.{name}.contsub_holo",
             "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
             f"linmos.feeds.image.restored.{name}.contsub": "[0.0,0.0]",
+            "linmos.beam_root": beam_root if (source_identifier and sbid) else "",
             "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
         }
 

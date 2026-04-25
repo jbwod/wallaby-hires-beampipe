@@ -5775,7 +5775,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "mpirun -np 4 --allow-run-as-root imager -c %i0",
+                    "value": "beam_root=$(python3 -c \"import re,pathlib; t=pathlib.Path('%i0').read_text(); m=re.search(r'^Cimager\\.beam_root=(.*)$',t,re.M); print((m.group(1).strip() if m else ''))\" ) && mkdir -p \"$beam_root/imager\" && cd \"$beam_root/imager\" && mpirun -np 4 --allow-run-as-root imager -c %i0",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -x-run-as-root imager",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
@@ -6351,7 +6351,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "mpirun -np 4 --allow-run-as-root imcontsub -c %i0",
+                    "value": "beam_root=$(python3 -c \"import re,pathlib; t=pathlib.Path('%i0').read_text(); m=re.search(r'^imcontsub\\.beam_root=(.*)$',t,re.M); print((m.group(1).strip() if m else ''))\" ) && mkdir -p \"$beam_root/imcontsub\" && cd \"$beam_root/imcontsub\" && mpirun -np 4 --allow-run-as-root imcontsub -c %i0",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -np 4 --allow-run-as-root imcontsub",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
@@ -6578,7 +6578,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "mpirun -np 4 --allow-run-as-root linmos -c %i0",
+                    "value": "beam_root=$(python3 -c \"import re,pathlib; t=pathlib.Path('%i0').read_text(); m=re.search(r'^linmos\\.beam_root=(.*)$',t,re.M); print((m.group(1).strip() if m else ''))\" ) && mkdir -p \"$beam_root/linmos\" && cd \"$beam_root/linmos\" && mpirun -np 4 --allow-run-as-root linmos -c %i0",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -np 4 --allow-run-as-root linmos",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
