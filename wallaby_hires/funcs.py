@@ -488,7 +488,7 @@ def _dynamic_str_to_obj(text: str):
     return _dynamic_buffer_to_obj(raw)
 
 
-def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
+def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = ""):
     """
     Update parset with dict values.
 
@@ -521,6 +521,14 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
             f"dynamic_parset must be list or pickled/JSON buffer, not {type(dynamic_parset).__name__}"
         )
 
+    beam_root = ""
+    if prefix:
+        key = f"{prefix}.beam_root"
+        for item in dynamic_parset:
+            if isinstance(item, dict) and key in item:
+                beam_root = str(item.get(key) or "").strip()
+                break
+
     for item in dynamic_parset:
         for key, value in item.items():
             if prefix:
@@ -547,7 +555,7 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
 
     serialp = "\n".join([f"{x}={y['value']}" for x, y in static_parset.items()])
 
-    return serialp
+    return serialp, beam_root
 
 
 # Code to download files from casda
