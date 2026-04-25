@@ -2574,7 +2574,7 @@
             "fields": [
                 {
                     "name": "filepath",
-                    "value": "",
+                    "value": "imcontsub/",
                     "defaultValue": "",
                     "description": "File path for this file. In many cases this does not need to be specified. If it has a \\/ at the end it will be treated as a directory name and the filename will be generated. If it does not have a \\/, the last part will be treated as a filename. If filepath does not start with \\/ (relative path) then the session directory will be prepended to make the path absolute.\"",
                     "readonly": false,
@@ -2687,7 +2687,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "dcbe1107-d784-422e-808e-32ae57984ac8",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -2982,7 +2982,7 @@
             "fields": [
                 {
                     "name": "filepath",
-                    "value": "",
+                    "value": "linmos/",
                     "defaultValue": "",
                     "description": "File path for this file. In many cases this does not need to be specified. If it has a \\/ at the end it will be treated as a directory name and the filename will be generated. If it does not have a \\/, the last part will be treated as a filename. If filepath does not start with \\/ (relative path) then the session directory will be prepended to make the path absolute.\"",
                     "readonly": false,
@@ -3095,7 +3095,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "274c65b7-d757-4efe-95f3-3c08cdde4eb1",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -3134,7 +3134,7 @@
             "fields": [
                 {
                     "name": "filepath",
-                    "value": "file",
+                    "value": "imager/",
                     "defaultValue": "",
                     "description": "File path for this file. In many cases this does not need to be specified. If it has a \\/ at the end it will be treated as a directory name and the filename will be generated. If it does not have a \\/, the last part will be treated as a filename. If filepath does not start with \\/ (relative path) then the session directory will be prepended to make the path absolute.\"",
                     "readonly": false,
@@ -5775,7 +5775,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "mpirun -np 4 --allow-run-as-root imager -c file",
+                    "value": "mpirun -np 4 --allow-run-as-root imager -c %i0",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -x-run-as-root imager",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
@@ -6351,7 +6351,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "mpirun -np 4 --allow-run-as-root imcontsub",
+                    "value": "mpirun -np 4 --allow-run-as-root imcontsub -c %i0",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -np 4 --allow-run-as-root imcontsub",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
@@ -6404,7 +6404,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "path",
                     "id": "f68fcbef-d774-4422-828a-2eb3380c0e46",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -6578,7 +6578,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "mpirun -np 4 --allow-run-as-root linmos",
+                    "value": "mpirun -np 4 --allow-run-as-root linmos -c %i0",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -np 4 --allow-run-as-root linmos",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
@@ -6631,7 +6631,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "path",
                     "id": "c82f1b8f-38a8-4553-a2d6-a986bbaa870a",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
