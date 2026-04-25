@@ -3262,7 +3262,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "aed0c75c-f5cf-4112-a059-18bfdafcef0a",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -5828,7 +5828,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "path",
                     "id": "32fdf20f-4a17-418e-9b08-e84a5615f06c",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
