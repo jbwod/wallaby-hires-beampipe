@@ -185,7 +185,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "raw",
                     "defaultValue": "pickle",
                     "description": "Output port parsing technique Mapping from argname to default value. Should match only the last part of the argnames list. Values are interpreted as Python code literals and that means string values need to be quoted.",
                     "readonly": false,
@@ -215,7 +215,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "raw",
                     "id": "20cc7eed-9573-4188-8c00-129d10e6215d",
                     "parameterType": "ComponentParameter",
                     "usage": "OutputPort"
@@ -576,7 +576,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "raw",
                     "defaultValue": "pickle",
                     "description": "Output port parsing technique Mapping from argname to default value. Should match only the last part of the argnames list. Values are interpreted as Python code literals and that means string values need to be quoted.",
                     "readonly": false,
@@ -2048,7 +2048,7 @@
             "outputAppFields": [],
             "inputApplicationName": "GenericScatterApp",
             "inputApplicationType": "DALiuGEApp",
-            "inputApplicationId": "955738ab-fe0b-4aab-82c1-bd306f3e06c2",
+            "inputApplicationId": "43f39a09-7fc0-4b55-a6b5-a20965b14730",
             "inputApplicationDescription": "",
             "inputApplicationComment": "",
             "outputApplicationName": "",
