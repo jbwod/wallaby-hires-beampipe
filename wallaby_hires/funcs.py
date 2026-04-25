@@ -585,6 +585,8 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     for item in dynamic_parset:
         if isinstance(item, dict) and key in item:
             beam_root = str(item.get(key) or "").strip()
+            if beam_root and not os.path.isabs(beam_root):
+                beam_root = os.path.join(os.getcwd(), beam_root)
             if beam_root:
                 tool_dir = {
                     "Cimager": "imager",
@@ -784,7 +786,8 @@ def untar_file(tar_file: str, output_dir: str = "."):
 
 
 def _beam_dir_from_ms_tar_name(name: str) -> str:
-    m = re.search(r"_beam(\\d+)_", name or "")
+    # Match both \"_beam25_\" and \"_beam25\" forms.
+    m = re.search(r"_beam(\\d+)(?:_|\\b)", name or "")
     if not m:
         return "beam"
     return f"beam{int(m.group(1))}"
