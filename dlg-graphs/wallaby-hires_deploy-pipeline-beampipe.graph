@@ -5888,7 +5888,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "faf43f22-e4f5-477b-86e4-9442fb91bbef",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -6479,7 +6479,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "cf4ac423-49d4-4974-9800-7ac4acd7bb54",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -6721,7 +6721,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "76ae9eb1-c334-40d1-a535-6ca35a3f3fb8",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -9660,7 +9660,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "utf-8",
                     "defaultValue": "pickle",
                     "description": "",
                     "readonly": false,
@@ -9698,7 +9698,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "77d2d90f-c3aa-4a1e-844a-b310fdcff309",
                     "parameterType": "ApplicationArgument",
                     "usage": "OutputPort"
@@ -9756,11 +9756,11 @@
                     "defaultValue": "",
                     "description": "Input Output port",
                     "readonly": false,
-                    "type": "Object",
+                    "type": "String",
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "ffa08275-bc6e-4661-8cef-ed2f393bd963",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -10091,7 +10091,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "utf-8",
                     "defaultValue": "pickle",
                     "description": "",
                     "readonly": false,
@@ -10129,7 +10129,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "82ca58ee-d522-4d53-a22e-e3b8d52330e2",
                     "parameterType": "ApplicationArgument",
                     "usage": "OutputPort"
@@ -10187,11 +10187,11 @@
                     "defaultValue": "",
                     "description": "Input Output port",
                     "readonly": false,
-                    "type": "Object",
+                    "type": "String",
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "6164a794-7923-4dba-95fc-5f9972cba813",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -10522,7 +10522,7 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "pickle",
+                    "value": "utf-8",
                     "defaultValue": "pickle",
                     "description": "",
                     "readonly": false,
@@ -10560,7 +10560,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "17ea3d22-14b0-4cf1-80bd-eeea2dda9c37",
                     "parameterType": "ApplicationArgument",
                     "usage": "OutputPort"
@@ -10618,11 +10618,11 @@
                     "defaultValue": "",
                     "description": "Input Output port",
                     "readonly": false,
-                    "type": "Object",
+                    "type": "String",
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "utf-8",
                     "id": "e860357b-c449-476a-b481-aea30303fd80",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
