@@ -6702,7 +6702,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "path",
                     "id": "fb4f2db2-8dd3-4b40-88a6-9afbd3f0c0cf",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
@@ -6898,7 +6898,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "pickle",
+                    "encoding": "path",
                     "id": "5c6b1ff5-2c46-4a16-b0d8-4e6b76c32a81",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
