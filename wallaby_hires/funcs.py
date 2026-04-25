@@ -26,6 +26,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlparse
 
 PRESTAGE_INPUTS_DIR = "inputs"
+CHECKSUMS_DIR = os.path.join(PRESTAGE_INPUTS_DIR, "checksums")
 
 
 class ManifestDownloadError(RuntimeError):
@@ -131,6 +132,67 @@ def _download_url_to_path(url: str, path: str, timeout: int = 300) -> None:
     print(f"Downloaded {url} -> {path}")
 
 
+def _write_text_atomic(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def _fetch_checksum_to_workspace(checksum_url: str, timeout: int = 300) -> tuple[str, str]:
+    """
+    Download checksum text into the current workspace and return
+    (expected_hex, checksum_file_path). If checksum_url is empty, returns ("","").
+    """
+    if not checksum_url or not str(checksum_url).strip():
+        return "", ""
+    with urllib.request.urlopen(checksum_url, timeout=timeout) as r:
+        content = r.read().decode("utf-8", errors="replace").strip()
+    parsed = urlparse(checksum_url)
+    name = os.path.basename(parsed.path) or "download.checksum"
+    local_path = os.path.join(os.getcwd(), CHECKSUMS_DIR, name)
+    _write_text_atomic(local_path, content + "\n")
+    parts = content.split()
+    expected = (parts[0] if parts else "").strip().lower()
+    return expected, local_path
+
+
+def _hash_file(filepath: str, algo: str, chunk_size: int = 1 << 20) -> str:
+    algo = (algo or "").lower()
+    if algo == "md5":
+        h = hashlib.md5()
+    else:
+        raise ValueError(f"Unsupported chk: {algo!r}")
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest().lower()
+
+
+def _infer_hash_algo_from_hex(expected_hex: str) -> str:
+    """
+    CASDA checksum
+    """
+    n = len(expected_hex or "")
+    if n != 32:
+        raise ValueError(f"wrong chksm (32 hex), got length {n} for {expected_hex!r}")
+    return "md5"
+
+
+def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
+    if staging_root is None:
+        staging_root = ""
+    staging_root = _peel_dlg_port_to_str_or_tuple(staging_root)
+    if staging_root is None:
+        staging_root = ""
+    if isinstance(staging_root, tuple):
+        staging_root = str(staging_root)
+    staging_root = str(staging_root).strip()
+    if staging_root:
+        return staging_root
+    return os.environ.get("WALLABY_HIRES_STAGING_ROOT", "").strip()
+
 # def _verify_checksum(filepath: str, checksum_url: str, timeout: int = 300) -> None:
 #     """
 #     Fetch CASDA checksum file and verify downloaded file via MD5.
@@ -169,12 +231,14 @@ def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
     for src in sources:
         if not isinstance(src, dict):
             continue
+        source_identifier = src.get("source_identifier") or src.get("name") or src.get("source") or ""
         ra = src.get("ra_string") or ""
         dec = src.get("dec_string") or ""
         vsys = src.get("vsys")
         for sbid_group in src.get("sbids") or []:
             if not isinstance(sbid_group, dict):
                 continue
+            sbid = sbid_group.get("sbid") or ""
             evaluation_file = sbid_group.get("evaluation_file") or ""
             evaluation_file_url = sbid_group.get("evaluation_file_url") or ""
             evaluation_file_checksum_url = sbid_group.get("evaluation_file_checksum_url") or ""
@@ -183,6 +247,8 @@ def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
                     continue
                 name = ds.get("name") or ds.get("dataset_id") or ""
                 rows.append({
+                    "source_identifier": source_identifier,
+                    "sbid": str(sbid) if sbid is not None else "",
                     "name": name,
                     "ra_string": ra or ds.get("ra_string") or "",
                     "dec_string": dec or ds.get("dec_string") or "",
@@ -258,7 +324,12 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
     if rows:
         csv_string = _build_csv_string_from_dataset_rows(rows)
         ms_urls = [
-            {"url": r["staged_url"], "checksum_url": r.get("checksum_url") or ""}
+            {
+                "url": r["staged_url"],
+                "checksum_url": r.get("checksum_url") or "",
+                "source_identifier": r.get("source_identifier") or "",
+                "sbid": r.get("sbid") or "",
+            }
             for r in rows
             if r.get("staged_url")
         ]
@@ -271,6 +342,8 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
                 eval_urls.append({
                     "url": url,
                     "checksum_url": r.get("evaluation_file_checksum_url") or "",
+                    "source_identifier": r.get("source_identifier") or "",
+                    "sbid": r.get("sbid") or "",
                 })
     else:
         # Legacy: download input_csv and use its content; use staged URL lists
@@ -522,9 +595,9 @@ def download_file(
     # Large timeout is necessary as the file may need to be staged from tape
 
     try:
-        os.makedirs(output)
+        os.makedirs(output, exist_ok=True)
     except Exception:
-        pass
+        output = "."
 
     if url is None:
         raise ManifestDownloadError("URL is empty")
@@ -562,11 +635,29 @@ def download_file(
 
             if check_exists:
                 try:
-                    file_size = os.path.getsize(filepath)
-                    if file_size == http_size:
-                        print(f"File exists, ignoring: {os.path.basename(filepath)}")
-                        # _verify_checksum(filepath, checksum_url or "", timeout)
-                        return filepath
+                    if os.path.exists(filepath):
+                        if checksum_url and str(checksum_url).strip():
+                            expected_hex, _local_checksum_path = _fetch_checksum_to_workspace(
+                                checksum_url, timeout=timeout
+                            )
+                            if expected_hex:
+                                algo = _infer_hash_algo_from_hex(expected_hex)
+                                actual_hex = _hash_file(filepath, algo)
+                                if actual_hex == expected_hex:
+                                    print(
+                                        f"File exists with matching checksum, ignoring: "
+                                        f"{os.path.basename(filepath)}"
+                                    )
+                                    return filepath
+                                print(
+                                    f"Checksum mismatch re-downloading: {os.path.basename(filepath)} "
+                                    f"(expected {expected_hex}, got {actual_hex})"
+                                )
+                        else:
+                            file_size = os.path.getsize(filepath)
+                            if file_size == http_size:
+                                print(f"File exists ignoring: {os.path.basename(filepath)}")
+                                return filepath
                 except FileNotFoundError:
                     pass
 
@@ -588,7 +679,18 @@ def download_file(
                 )
 
             print(f"Download complete: {os.path.basename(filepath)}")
-            # _verify_checksum(filepath, checksum_url or "", timeout)
+            if checksum_url and str(checksum_url).strip():
+                expected_hex, _local_checksum_path = _fetch_checksum_to_workspace(
+                    checksum_url, timeout=timeout
+                )
+                if expected_hex:
+                    algo = _infer_hash_algo_from_hex(expected_hex)
+                    actual_hex = _hash_file(filepath, algo)
+                    if actual_hex != expected_hex:
+                        raise ManifestDownloadError(
+                            f"Checksum mismatch for {os.path.basename(filepath)}: "
+                            f"expected {expected_hex}, got {actual_hex}"
+                        )
 
             return filepath
     except HTTPError as e:
@@ -846,6 +948,7 @@ def download_data_ms(
     timeout_seconds: int,
     project_code: str,
     ms_urls_json: Optional[str] = None,
+    staging_root: Optional[str] = None,
 ):
     """
     Downloads and untars the .ms files for a given HIPASS source.
@@ -883,31 +986,36 @@ def download_data_ms(
     if not ms_urls_json:
         raise ValueError("manifest input required; ms_urls_json must be provided")
     raw = json.loads(ms_urls_json)
+    staging_root = _resolve_staging_root_arg(staging_root)
     items = []
     for u in raw:
         if isinstance(u, str):
             if not u.endswith("checksum"):
-                items.append({"url": u, "checksum_url": ""})
+                items.append({"url": u, "checksum_url": "", "source_identifier": "", "sbid": ""})
         elif isinstance(u, dict) and u.get("url"):
             items.append({
                 "url": u["url"],
                 "checksum_url": u.get("checksum_url") or "",
+                "source_identifier": u.get("source_identifier") or "",
+                "sbid": str(u.get("sbid") or ""),
             })
     file_list = []
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
     failed = False
     try:
-        futures = [
-            executor.submit(
+        futures = []
+        for item in items:
+            stage_dir = "."
+            if staging_root and item.get("source_identifier") and item.get("sbid"):
+                stage_dir = os.path.join(staging_root, item["source_identifier"], str(item["sbid"]))
+            futures.append(executor.submit(
                 download_file,
                 url=item["url"],
                 check_exists=True,
-                output=".",
+                output=stage_dir,
                 timeout=timeout_seconds,
                 checksum_url=item["checksum_url"] or None,
-            )
-            for item in items
-        ]
+            ))
         for future in concurrent.futures.as_completed(futures):
             file_list.append(future.result())
     except Exception:
@@ -928,6 +1036,7 @@ def download_data_eval(
     timeout_seconds: int,
     project_code: str,
     eval_urls_json: Optional[str] = None,
+    staging_root: Optional[str] = None,
 ):
     """
     Downloads and untars the evaluation files for a given HIPASS source.
@@ -964,17 +1073,22 @@ def download_data_eval(
     if not eval_urls_json:
         raise ValueError("manifest input required; eval_urls_json must be provided")
     raw = json.loads(eval_urls_json)
+    staging_root = _resolve_staging_root_arg(staging_root)
     items = []
     for u in raw:
         if isinstance(u, str):
-            items.append({"url": u, "checksum_url": ""})
+            items.append({"url": u, "checksum_url": "", "source_identifier": "", "sbid": ""})
         elif isinstance(u, dict) and u.get("url"):
             items.append({
                 "url": u["url"],
                 "checksum_url": u.get("checksum_url") or "",
+                "source_identifier": u.get("source_identifier") or "",
+                "sbid": str(u.get("sbid") or ""),
             })
-    download_dir = os.getcwd()
     for item in items:
+        download_dir = os.getcwd()
+        if staging_root and item.get("source_identifier") and item.get("sbid"):
+            download_dir = os.path.join(staging_root, item["source_identifier"], str(item["sbid"]))
         path = download_file(
             url=item["url"],
             check_exists=True,

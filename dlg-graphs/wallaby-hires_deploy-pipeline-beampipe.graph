@@ -8186,6 +8186,21 @@
                     "id": "04b65b90-229b-44cd-8398-367c8d66e51f",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
+                },
+                {
+                    "name": "staging_root",
+                    "value": "",
+                    "defaultValue": "",
+                    "description": "Shared staging root for cached tar downloads (optional).",
+                    "readonly": false,
+                    "type": "String",
+                    "precious": false,
+                    "options": [],
+                    "positional": false,
+                    "encoding": "pickle",
+                    "id": "b2a51b3c-0e0b-4b2a-9af5-1a32db8c13b5",
+                    "parameterType": "ApplicationArgument",
+                    "usage": "InputPort"
                 }
             ],
             "inputAppFields": [],
@@ -8365,6 +8380,21 @@
                     "positional": false,
                     "encoding": "pickle",
                     "id": "920b1449-67b9-4c4d-92fa-62df40cd7dc5",
+                    "parameterType": "ApplicationArgument",
+                    "usage": "InputPort"
+                },
+                {
+                    "name": "staging_root",
+                    "value": "",
+                    "defaultValue": "",
+                    "description": "Shared staging root for cached tar downloads (optional).",
+                    "readonly": false,
+                    "type": "String",
+                    "precious": false,
+                    "options": [],
+                    "positional": false,
+                    "encoding": "pickle",
+                    "id": "f0136c11-66ab-4f29-bec6-5c4a0f9d2d2b",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
                 }
