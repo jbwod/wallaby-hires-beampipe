@@ -566,6 +566,7 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
 
     return serialp
 def extract_beam_root(dynamic_parset, prefix: str) -> str:
+    prefix = (prefix or "").strip()
     tolist = getattr(dynamic_parset, "tolist", None)
     if callable(tolist):
         dynamic_parset = tolist()
@@ -607,6 +608,8 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
 
     out_dir = os.path.join(beam_root, tool_dir) if tool_dir else beam_root
     os.makedirs(out_dir, exist_ok=True)
+    if not os.path.isdir(out_dir):
+        raise RuntimeError(f"beam_root directory was not created: {out_dir!r}")
 
     # FileDROP wants a directory path ending with "/" if we want DALiuGE to
     # auto-generate a unique filename in that directory.
@@ -1407,6 +1410,7 @@ def process_CSV_str(csv_string: str) -> list:
         ms_name = name
         if ms_name.endswith(".tar"):
             ms_name = ms_name[: -len(".tar")]
+        image_stem = ms_name
         beam_dir = _beam_dir_from_ms_tar_name(ms_name)
         if source_identifier and sbid:
             beam_root = os.path.abspath(
@@ -1422,21 +1426,21 @@ def process_CSV_str(csv_string: str) -> list:
 
         # Create the desired output dictionary
         output_dict = {
-            "Cimager.dataset": dataset_path,
+            "Cimager.dataset": f"\"{dataset_path}\"",
             "Cimager.beam_root": beam_root if (source_identifier and sbid) else "",
-            "Cimager.Images.Names": f"[image.{name}]",
+            "Cimager.Images.Names": f"[image.{image_stem}]",
             "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
             "Cimager.write.weightsimage": "true",
             "Vsys": Vsys,
             "imcontsub.beam_root": beam_root if (source_identifier and sbid) else "",
-            "imcontsub.inputfitscube": f"image.restored.{name}",
-            "imcontsub.outputfitscube": f"image.restored.{name}.contsub",
-            "linmos.names": f"[image.restored.{name}.contsub]",
-            "linmos.weights": f"[weights.{name}]",
-            "linmos.outname": f"image.restored.{name}.contsub_holo",
-            "linmos.outweight": f"weights.{name}.contsub_holo",
+            "imcontsub.inputfitscube": f"image.restored.{image_stem}",
+            "imcontsub.outputfitscube": f"image.restored.{image_stem}.contsub",
+            "linmos.names": f"[image.restored.{image_stem}.contsub]",
+            "linmos.weights": f"[weights.{image_stem}]",
+            "linmos.outname": f"image.restored.{image_stem}.contsub_holo",
+            "linmos.outweight": f"weights.{image_stem}.contsub_holo",
             "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-            f"linmos.feeds.image.restored.{name}.contsub": "[0.0,0.0]",
+            f"linmos.feeds.image.restored.{image_stem}.contsub": "[0.0,0.0]",
             "linmos.beam_root": beam_root if (source_identifier and sbid) else "",
             "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
         }
