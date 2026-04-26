@@ -565,47 +565,48 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
     serialp = "\n".join([f"{x}={y['value']}" for x, y in static_parset.items()])
 
     return serialp
-
-
 def extract_beam_root(dynamic_parset, prefix: str) -> str:
-    if isinstance(dynamic_parset, (bytes, memoryview, bytearray)):
-        dynamic_parset = _dynamic_buffer_to_obj(bytes(dynamic_parset))
-    elif isinstance(dynamic_parset, str):
-        dynamic_parset = _dynamic_str_to_obj(dynamic_parset)
+    dp = _unwrap_dlg_port_layer(dynamic_parset)
 
-    tolist = getattr(dynamic_parset, "tolist", None)
-    if callable(tolist):
-        dynamic_parset = tolist()
+    if isinstance(dp, (bytes, bytearray, memoryview)):
+        dp = _unwrap_dlg_port_layer(dp)
+    if isinstance(dp, str):
+        try:
+            dp = json.loads(dp)
+        except Exception:
+            pass
 
-    if not isinstance(dynamic_parset, list):
-        raise TypeError(
-            f"dynamic_parset must be list or pickled/JSON buffer, not {type(dynamic_parset).__name__}"
-        )
     key = f"{prefix}.beam_root"
-    for item in dynamic_parset:
-        if isinstance(item, dict) and key in item:
-            beam_root = str(item.get(key) or "").strip()
-            if not beam_root:
-                return ""
-            if not os.path.isabs(beam_root):
-                beam_root = os.path.abspath(os.path.join(os.getcwd(), beam_root))
+    beam_root = ""
+    if isinstance(dp, list):
+        for item in dp:
+            if isinstance(item, dict) and key in item:
+                beam_root = str(item.get(key) or "").strip()
+                break
+    elif isinstance(dp, dict) and key in dp:
+        beam_root = str(dp.get(key) or "").strip()
 
-            os.makedirs(beam_root, exist_ok=True)
+    if not beam_root:
+        return ""
 
-            # If we haven't yet made that dir
-            tool_dir = {
-                "Cimager": "imager",
-                "imcontsub": "imcontsub",
-                "linmos": "linmos",
-            }.get(prefix, "")
-            if tool_dir:
-                os.makedirs(os.path.join(beam_root, tool_dir), exist_ok=True)
+    # Make absolute inside the DALiuGE session workspace.
+    if not os.path.isabs(beam_root):
+        beam_root = os.path.abspath(os.path.join(os.getcwd(), beam_root))
 
-            return beam_root
-    return ""
+    tool_dir = {
+        "Cimager": "imager",
+        "imcontsub": "imcontsub",
+        "linmos": "linmos",
+    }.get(prefix, "")
 
+    out_dir = os.path.join(beam_root, tool_dir) if tool_dir else beam_root
+    os.makedirs(out_dir, exist_ok=True)
 
-# Code to download files from casda
+    # FileDROP wants a directory path ending with "/" if we want DALiuGE to
+    # auto-generate a unique filename in that directory.
+    if not out_dir.endswith(os.sep):
+        out_dir = out_dir + os.sep
+    return out_dir# Code to download files from casda
 def download_file(
     url: str,
     check_exists: bool,
@@ -1399,10 +1400,14 @@ def process_CSV_str(csv_string: str) -> list:
             ms_name = ms_name[: -len(".tar")]
         beam_dir = _beam_dir_from_ms_tar_name(ms_name)
         if source_identifier and sbid:
-            beam_root = os.path.join(source_identifier, str(sbid), beam_dir)
+            beam_root = os.path.abspath(
+                os.path.join(os.getcwd(), source_identifier, str(sbid), beam_dir)
+            )
             dataset_path = os.path.join(beam_root, ms_name, ms_name)
             # evaluation_file is path inside eval tar; we extract eval into ./{source}/{sbid}/eval/
-            evaluation_file = os.path.join(source_identifier, str(sbid), "eval", evaluation_file)
+            evaluation_file = os.path.abspath(
+                os.path.join(os.getcwd(), source_identifier, str(sbid), "eval", evaluation_file)
+            )
         else:
             dataset_path = os.path.join(ms_name, ms_name)
 
