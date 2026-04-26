@@ -566,7 +566,13 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
 
     return serialp
 def extract_beam_root(dynamic_parset, prefix: str) -> str:
-    dp = _unwrap_dlg_port_layer(dynamic_parset)
+    tolist = getattr(dynamic_parset, "tolist", None)
+    if callable(tolist):
+        dynamic_parset = tolist()
+
+    dp = dynamic_parset
+    if not isinstance(dp, (list, dict)):
+        dp = _unwrap_dlg_port_layer(dp)
 
     if isinstance(dp, (bytes, bytearray, memoryview)):
         dp = _unwrap_dlg_port_layer(dp)
@@ -606,7 +612,10 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     # auto-generate a unique filename in that directory.
     if not out_dir.endswith(os.sep):
         out_dir = out_dir + os.sep
-    return out_dir# Code to download files from casda
+    return out_dir
+
+
+# Code to download files from casda
 def download_file(
     url: str,
     check_exists: bool,
