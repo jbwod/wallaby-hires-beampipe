@@ -1414,9 +1414,16 @@ def process_CSV_str(csv_string: str) -> list:
                 os.path.join(os.getcwd(), source_identifier, str(sbid), beam_dir)
             )
             dataset_path = os.path.join(beam_root, ms_name)
-            # evaluation_file is path inside eval tar; we extract eval into ./{source}/{sbid}/eval/
+            eval_rel = str(evaluation_file).lstrip("/").strip()
+            marker = "LinmosBeamImages/"
+            if marker in eval_rel:
+                eval_rel = marker + eval_rel.split(marker, 1)[1]
+            else:
+                parts = eval_rel.split("/", 1)
+                if len(parts) == 2 and parts[0].startswith("calibration-metadata-processing-logs-"):
+                    eval_rel = parts[1]
             evaluation_file = os.path.abspath(
-                os.path.join(os.getcwd(), source_identifier, str(sbid), "eval", evaluation_file)
+                os.path.join(os.getcwd(), source_identifier, str(sbid), "eval", eval_rel)
             )
         else:
             dataset_path = ms_name
