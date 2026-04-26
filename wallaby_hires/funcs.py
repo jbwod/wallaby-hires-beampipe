@@ -585,16 +585,22 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     for item in dynamic_parset:
         if isinstance(item, dict) and key in item:
             beam_root = str(item.get(key) or "").strip()
-            if beam_root and not os.path.isabs(beam_root):
-                beam_root = os.path.join(os.getcwd(), beam_root)
-            if beam_root:
-                tool_dir = {
-                    "Cimager": "imager",
-                    "imcontsub": "imcontsub",
-                    "linmos": "linmos",
-                }.get(prefix, "")
-                if tool_dir:
-                    os.makedirs(os.path.join(beam_root, tool_dir), exist_ok=True)
+            if not beam_root:
+                return ""
+            if not os.path.isabs(beam_root):
+                beam_root = os.path.abspath(os.path.join(os.getcwd(), beam_root))
+
+            os.makedirs(beam_root, exist_ok=True)
+
+            # If we haven't yet made that dir
+            tool_dir = {
+                "Cimager": "imager",
+                "imcontsub": "imcontsub",
+                "linmos": "linmos",
+            }.get(prefix, "")
+            if tool_dir:
+                os.makedirs(os.path.join(beam_root, tool_dir), exist_ok=True)
+
             return beam_root
     return ""
 
