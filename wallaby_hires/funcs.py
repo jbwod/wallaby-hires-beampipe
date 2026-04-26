@@ -793,7 +793,7 @@ def untar_file(tar_file: str, output_dir: str = "."):
 
 def _beam_dir_from_ms_tar_name(name: str) -> str:
     # Match both \"_beam25_\" and \"_beam25\" forms.
-    m = re.search(r"_beam(\\d+)(?:_|\\b)", name or "")
+    m = re.search(r"_beam(\d+)(?:_|\b)", name or "")
     if not m:
         return "beam"
     return f"beam{int(m.group(1))}"
