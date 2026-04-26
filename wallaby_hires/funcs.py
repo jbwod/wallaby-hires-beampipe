@@ -1412,13 +1412,13 @@ def process_CSV_str(csv_string: str) -> list:
             beam_root = os.path.abspath(
                 os.path.join(os.getcwd(), source_identifier, str(sbid), beam_dir)
             )
-            dataset_path = os.path.join(beam_root, ms_name, ms_name)
+            dataset_path = os.path.join(beam_root, ms_name)
             # evaluation_file is path inside eval tar; we extract eval into ./{source}/{sbid}/eval/
             evaluation_file = os.path.abspath(
                 os.path.join(os.getcwd(), source_identifier, str(sbid), "eval", evaluation_file)
             )
         else:
-            dataset_path = os.path.join(ms_name, ms_name)
+            dataset_path = ms_name
 
         # Create the desired output dictionary
         output_dict = {
