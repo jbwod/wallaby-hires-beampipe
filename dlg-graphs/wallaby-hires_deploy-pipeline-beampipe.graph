@@ -2561,7 +2561,7 @@
             "color": "#2c2c2c",
             "drawOrderHint": 0,
             "id": "f89f0d4b-500a-4822-a879-52a8202a2b1f",
-            "name": "imcontsubParset",
+            "name": "imcontsub",
             "description": "A standard file on a filesystem mounted to the deployment machine",
             "comment": "",
             "x": 2039.25661873634,
@@ -2574,9 +2574,9 @@
             "fields": [
                 {
                     "name": "filepath",
-                    "value": "imcontsub/",
+                    "value": "",
                     "defaultValue": "",
-                    "description": "File path for this file. In many cases this does not need to be specified. If it has a \\/ at the end it will be treated as a directory name and the filename will be generated. If it does not have a \\/, the last part will be treated as a filename. If filepath does not start with \\/ (relative path) then the session directory will be prepended to make the path absolute.\"",
+                    "description": "",
                     "readonly": false,
                     "type": "String",
                     "precious": false,
@@ -2585,7 +2585,7 @@
                     "encoding": "pickle",
                     "id": "b2c76447-5c16-4253-9c76-3c641382fed9",
                     "parameterType": "ApplicationArgument",
-                    "usage": "NoPort"
+                    "usage": "InputPort"
                 },
                 {
                     "name": "check_filepath_exists",
@@ -3121,11 +3121,11 @@
             "color": "#2c2c2c",
             "drawOrderHint": 0,
             "id": "bf1f5113-7a70-4b9d-98ce-646eadcb0938",
-            "name": "beam_root",
+            "name": "imager",
             "description": "A standard file on a filesystem mounted to the deployment machine",
             "comment": "",
             "x": 2036.8828789016152,
-            "y": 1554.835408263463,
+            "y": 1555.6491172527722,
             "repositoryUrl": "https://github.com/ICRAR/daliuge",
             "commitHash": "11a664f",
             "paletteDownloadUrl": "https://raw.githubusercontent.com/ICRAR/EAGLE-graph-repo/master/daliuge/daliuge-master.palette",
@@ -3134,9 +3134,9 @@
             "fields": [
                 {
                     "name": "filepath",
-                    "value": "imager/",
+                    "value": "",
                     "defaultValue": "",
-                    "description": "File path for this file. In many cases this does not need to be specified. If it has a \\/ at the end it will be treated as a directory name and the filename will be generated. If it does not have a \\/, the last part will be treated as a filename. If filepath does not start with \\/ (relative path) then the session directory will be prepended to make the path absolute.\"",
+                    "description": "",
                     "readonly": false,
                     "type": "String",
                     "precious": false,
@@ -3145,7 +3145,7 @@
                     "encoding": "pickle",
                     "id": "9d76b216-4482-4c85-b139-3d1be7c853a6",
                     "parameterType": "ApplicationArgument",
-                    "usage": "NoPort"
+                    "usage": "InputPort"
                 },
                 {
                     "name": "check_filepath_exists",
@@ -9675,7 +9675,7 @@
                 },
                 {
                     "name": "prefix",
-                    "value": "",
+                    "value": "Cimager",
                     "defaultValue": "",
                     "description": "",
                     "readonly": false,
@@ -9727,8 +9727,8 @@
             "name": "beam_root",
             "description": "A DataDROP that represents a filesystem directory.",
             "comment": "",
-            "x": 2057.898551706689,
-            "y": 1704.5521296947716,
+            "x": 2051.7349305130097,
+            "y": 1705.579399893718,
             "repositoryUrl": "https://github.com/ICRAR/daliuge",
             "commitHash": "435965f",
             "paletteDownloadUrl": "https://raw.githubusercontent.com/ICRAR/EAGLE-graph-repo/master/daliuge/daliuge-master.palette",
@@ -9812,7 +9812,7 @@
                 },
                 {
                     "name": "dirname",
-                    "value": "{beam_root}",
+                    "value": "",
                     "defaultValue": "",
                     "description": "Directory name/path",
                     "readonly": false,
@@ -9823,7 +9823,7 @@
                     "encoding": "pickle",
                     "id": "9e4a4823-fed9-4f3c-84ab-ef8f36fd9353",
                     "parameterType": "ApplicationArgument",
-                    "usage": "NoPort"
+                    "usage": "InputPort"
                 },
                 {
                     "name": "create_if_missing",
@@ -9884,21 +9884,6 @@
                     "id": "0cc31a96-3eae-441c-ad8d-ffd2a7135a5b",
                     "parameterType": "ApplicationArgument",
                     "usage": "OutputPort"
-                },
-                {
-                    "name": "beam_root",
-                    "value": "",
-                    "defaultValue": "",
-                    "description": "",
-                    "readonly": false,
-                    "type": "String",
-                    "precious": false,
-                    "options": [],
-                    "positional": false,
-                    "encoding": "pickle",
-                    "id": "bc347033-5cc0-4407-80ea-7b302ac6396b",
-                    "parameterType": "ApplicationArgument",
-                    "usage": "InputPort"
                 }
             ],
             "inputAppFields": [],
@@ -10350,15 +10335,6 @@
         },
         {
             "comment": "",
-            "from": "482545d5-6239-4232-af1f-0a39805330a1",
-            "fromPort": "77d2d90f-c3aa-4a1e-844a-b310fdcff309",
-            "to": "13d06f58-cc91-4774-8ad6-721488a1e714",
-            "toPort": "bc347033-5cc0-4407-80ea-7b302ac6396b",
-            "loop_aware": "0",
-            "closesLoop": false
-        },
-        {
-            "comment": "",
             "from": "13d06f58-cc91-4774-8ad6-721488a1e714",
             "fromPort": "0cc31a96-3eae-441c-ad8d-ffd2a7135a5b",
             "to": "a557bd42-2254-4197-bafb-dc50ee17c65b",
@@ -10381,6 +10357,33 @@
             "fromPort": "0cc31a96-3eae-441c-ad8d-ffd2a7135a5b",
             "to": "be3564c5-2149-4524-b77e-d8f83d6de9bd",
             "toPort": "76ae9eb1-c334-40d1-a535-6ca35a3f3fb8",
+            "loop_aware": "0",
+            "closesLoop": false
+        },
+        {
+            "comment": "",
+            "from": "482545d5-6239-4232-af1f-0a39805330a1",
+            "fromPort": "77d2d90f-c3aa-4a1e-844a-b310fdcff309",
+            "to": "13d06f58-cc91-4774-8ad6-721488a1e714",
+            "toPort": "9e4a4823-fed9-4f3c-84ab-ef8f36fd9353",
+            "loop_aware": "0",
+            "closesLoop": false
+        },
+        {
+            "comment": "",
+            "from": "482545d5-6239-4232-af1f-0a39805330a1",
+            "fromPort": "77d2d90f-c3aa-4a1e-844a-b310fdcff309",
+            "to": "bf1f5113-7a70-4b9d-98ce-646eadcb0938",
+            "toPort": "9d76b216-4482-4c85-b139-3d1be7c853a6",
+            "loop_aware": "0",
+            "closesLoop": false
+        },
+        {
+            "comment": "",
+            "from": "482545d5-6239-4232-af1f-0a39805330a1",
+            "fromPort": "77d2d90f-c3aa-4a1e-844a-b310fdcff309",
+            "to": "f89f0d4b-500a-4822-a879-52a8202a2b1f",
+            "toPort": "b2c76447-5c16-4253-9c76-3c641382fed9",
             "loop_aware": "0",
             "closesLoop": false
         }
