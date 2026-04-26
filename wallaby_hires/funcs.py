@@ -600,13 +600,7 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     if not os.path.isabs(beam_root):
         beam_root = os.path.abspath(os.path.join(os.getcwd(), beam_root))
 
-    tool_dir = {
-        "Cimager": "imager",
-        "imcontsub": "imcontsub",
-        "linmos": "linmos",
-    }.get(prefix, "")
-
-    out_dir = os.path.join(beam_root, tool_dir) if tool_dir else beam_root
+    out_dir = beam_root
     os.makedirs(out_dir, exist_ok=True)
     if not os.path.isdir(out_dir):
         raise RuntimeError(f"beam_root directory was not created: {out_dir!r}")
@@ -1226,14 +1220,17 @@ def process_CSV_mosaic(filename: str) -> list:
         for idx, row in enumerate(reader):
             # Extract individual parameters
             name = str(row[0]).strip()
+            sbid = str(row[7]).strip() if len(row) >= 8 else ""
 
             if name:  # Only process if 'name' is not empty
                 # Extract the base name from 'name'
                 extracted_name = name.split("_")[0]
+                beam_dir = _beam_dir_from_ms_tar_name(name)
 
                 # Generate the file names
-                linmos_image = f"image.restored.{name}.contsub_holo.fits"
-                weight_image = f"weights.{name}.contsub_holo.fits"
+                prefix = f"{sbid}/" if sbid else ""
+                linmos_image = f"{prefix}{beam_dir}/image.restored.{name}.contsub_holo.fits"
+                weight_image = f"{prefix}{beam_dir}/weights.{name}.contsub_holo.fits"
 
                 # Append to the lists
                 linmos_images_string.append(linmos_image)
@@ -1491,14 +1488,17 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
     for idx, row in enumerate(reader):
         # Extract individual parameters
         name = str(row[0]).strip()
+        sbid = str(row[7]).strip() if len(row) >= 8 else ""
 
         if name:  # Only process if 'name' is not empty
             # Extract the base name from 'name'
             extracted_name = name.split("_")[0]
+            beam_dir = _beam_dir_from_ms_tar_name(name)
 
             # Generate the file names
-            linmos_image = f"image.restored.{name}.contsub_holo.fits"
-            weight_image = f"weights.{name}.contsub_holo.fits"
+            prefix = f"{sbid}/" if sbid else ""
+            linmos_image = f"{prefix}{beam_dir}/image.restored.{name}.contsub_holo.fits"
+            weight_image = f"{prefix}{beam_dir}/weights.{name}.contsub_holo.fits"
 
             # Append to the lists
             linmos_images_string.append(linmos_image)
