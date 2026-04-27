@@ -1220,17 +1220,23 @@ def process_CSV_mosaic(filename: str) -> list:
         for idx, row in enumerate(reader):
             # Extract individual parameters
             name = str(row[0]).strip()
+            source_identifier = str(row[6]).strip() if len(row) >= 7 else ""
             sbid = str(row[7]).strip() if len(row) >= 8 else ""
 
             if name:  # Only process if 'name' is not empty
                 # Extract the base name from 'name'
-                extracted_name = name.split("_")[0]
-                beam_dir = _beam_dir_from_ms_tar_name(name)
+                name_no_tar = name[: -len(".tar")] if name.endswith(".tar") else name
+                extracted_name = name_no_tar.split("_")[0]
+                beam_dir = _beam_dir_from_ms_tar_name(name_no_tar)
 
                 # Generate the file names
-                prefix = f"{sbid}/" if sbid else ""
-                linmos_image = f"{prefix}{beam_dir}/image.restored.{name}.contsub_holo.fits"
-                weight_image = f"{prefix}{beam_dir}/weights.{name}.contsub_holo.fits"
+                prefix = ""
+                if source_identifier and sbid:
+                    prefix = f"{source_identifier}/{sbid}/"
+                elif sbid:
+                    prefix = f"{sbid}/"
+                linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo.fits"
+                weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo.fits"
 
                 # Append to the lists
                 linmos_images_string.append(linmos_image)
@@ -1238,10 +1244,11 @@ def process_CSV_mosaic(filename: str) -> list:
 
                 # Add the 'outname' and 'outweight' only for the first row
                 if idx == 0:
+                    out_prefix = f"{source_identifier}/" if source_identifier else ""
                     output_dict = {
-                        "linmos.outname": [f"image.{extracted_name}.10arc.final_mosaic"],
+                        "linmos.outname": [f"{out_prefix}image.{extracted_name}.10arc.final_mosaic"],
                         "linmos.outweight": [
-                            f"weights.{extracted_name}.10arc.final_mosaic"
+                            f"{out_prefix}weights.{extracted_name}.10arc.final_mosaic"
                         ],
                     }
                     data.append(output_dict)
@@ -1495,17 +1502,23 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
     for idx, row in enumerate(reader):
         # Extract individual parameters
         name = str(row[0]).strip()
+        source_identifier = str(row[6]).strip() if len(row) >= 7 else ""
         sbid = str(row[7]).strip() if len(row) >= 8 else ""
 
         if name:  # Only process if 'name' is not empty
             # Extract the base name from 'name'
-            extracted_name = name.split("_")[0]
-            beam_dir = _beam_dir_from_ms_tar_name(name)
+            name_no_tar = name[: -len(".tar")] if name.endswith(".tar") else name
+            extracted_name = name_no_tar.split("_")[0]
+            beam_dir = _beam_dir_from_ms_tar_name(name_no_tar)
 
             # Generate the file names
-            prefix = f"{sbid}/" if sbid else ""
-            linmos_image = f"{prefix}{beam_dir}/image.restored.{name}.contsub_holo.fits"
-            weight_image = f"{prefix}{beam_dir}/weights.{name}.contsub_holo.fits"
+            prefix = ""
+            if source_identifier and sbid:
+                prefix = f"{source_identifier}/{sbid}/"
+            elif sbid:
+                prefix = f"{sbid}/"
+            linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo.fits"
+            weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo.fits"
 
             # Append to the lists
             linmos_images_string.append(linmos_image)
@@ -1513,9 +1526,10 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
 
             # Add the 'outname' and 'outweight' only for the first row
             if idx == 0:
+                out_prefix = f"{source_identifier}/" if source_identifier else ""
                 output_dict = {
-                    "linmos.outname": [f"image.{extracted_name}.10arc.final_mosaic"],
-                    "linmos.outweight": [f"weights.{extracted_name}.10arc.final_mosaic"],
+                    "linmos.outname": [f"{out_prefix}image.{extracted_name}.10arc.final_mosaic"],
+                    "linmos.outweight": [f"{out_prefix}weights.{extracted_name}.10arc.final_mosaic"],
                 }
                 data.append(output_dict)
 
