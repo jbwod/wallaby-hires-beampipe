@@ -1235,8 +1235,8 @@ def process_CSV_mosaic(filename: str) -> list:
                     prefix = f"{source_identifier}/{sbid}/"
                 elif sbid:
                     prefix = f"{sbid}/"
-                linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo.fits"
-                weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo.fits"
+                linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo"
+                weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo"
 
                 # Append to the lists
                 linmos_images_string.append(linmos_image)
@@ -1517,8 +1517,9 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
                 prefix = f"{source_identifier}/{sbid}/"
             elif sbid:
                 prefix = f"{sbid}/"
-            linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo.fits"
-            weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo.fits"
+            # linmos.imagetype=fits makes linmos append ".fits" automatically.
+            linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo"
+            weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo"
 
             # Append to the lists
             linmos_images_string.append(linmos_image)
