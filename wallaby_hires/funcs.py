@@ -1246,19 +1246,16 @@ def process_CSV_mosaic(filename: str) -> list:
                 if idx == 0:
                     out_prefix = f"{source_identifier}/" if source_identifier else ""
                     output_dict = {
-                        "linmos.outname": [f"{out_prefix}image.{extracted_name}.10arc.final_mosaic"],
-                        "linmos.outweight": [
-                            f"{out_prefix}weights.{extracted_name}.10arc.final_mosaic"
-                        ],
+                        "linmos.outname": f"{out_prefix}image.{extracted_name}.10arc.final_mosaic",
+                        "linmos.outweight": f"{out_prefix}weights.{extracted_name}.10arc.final_mosaic",
                     }
                     data.append(output_dict)
 
-    # Append the final lists to the data
     if linmos_images_string and weights_images_string:
         data.append(
             {
-                "linmos.names": linmos_images_string,
-                "linmos.weights": weights_images_string,
+                "linmos.names": "[" + ",".join(linmos_images_string) + "]",
+                "linmos.weights": "[" + ",".join(weights_images_string) + "]",
             }
         )
 
@@ -1529,17 +1526,17 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
             if idx == 0:
                 out_prefix = f"{source_identifier}/" if source_identifier else ""
                 output_dict = {
-                    "linmos.outname": [f"{out_prefix}image.{extracted_name}.10arc.final_mosaic"],
-                    "linmos.outweight": [f"{out_prefix}weights.{extracted_name}.10arc.final_mosaic"],
+                    "linmos.outname": f"{out_prefix}image.{extracted_name}.10arc.final_mosaic",
+                    "linmos.outweight": f"{out_prefix}weights.{extracted_name}.10arc.final_mosaic",
                 }
                 data.append(output_dict)
 
-    # Append the final lists to the data
+    # Append the final lists to the data.
     if linmos_images_string and weights_images_string:
         data.append(
             {
-                "linmos.names": linmos_images_string,
-                "linmos.weights": weights_images_string,
+                "linmos.names": "[" + ",".join(linmos_images_string) + "]",
+                "linmos.weights": "[" + ",".join(weights_images_string) + "]",
             }
         )
 
