@@ -14,7 +14,7 @@ import hashlib
 import io
 import json
 import pickle
-from typing import Optional
+from typing import Callable, Optional
 
 # Importing required modules
 import os
@@ -771,8 +771,31 @@ def download_file(
         ) from e
 
 
+def _tar_member_name_safe(name: str) -> bool:
+    n = (name or "").replace("\\", "/").strip()
+    if not n or n.startswith("/") or ".." in n.split("/"):
+        return False
+    return True
+
+
+def _eval_calibration_tar_wanted_member(info: tarfile.TarInfo) -> bool:
+    name = (info.name or "").replace("\\", "/").lstrip("./")
+    if not _tar_member_name_safe(name):
+        return False
+    if info.isdir():
+        return False
+    # Match .../LinmosBeamImages/<something>.fits
+    if "/LinmosBeamImages/" not in name and not name.startswith("LinmosBeamImages/"):
+        return False
+    return name.lower().endswith(".fits")
+
+
 # Function to un-tar files
-def untar_file(tar_file: str, output_dir: str = "."):
+def untar_file(
+    tar_file: str,
+    output_dir: str = ".",
+    member_filter: Optional[Callable[[tarfile.TarInfo], bool]] = None,
+):
     """
     Extracts a tar file (.tar, .tar.gz, .tar.bz2) to the specified output directory.
 
@@ -782,7 +805,6 @@ def untar_file(tar_file: str, output_dir: str = "."):
         Path to the tar file to extract.
     output_dir:
         Directory where the contents will be extracted. Defaults to the current directory.
-
     Returns
     -------
     None
@@ -791,11 +813,33 @@ def untar_file(tar_file: str, output_dir: str = "."):
     try:
         os.makedirs(output_dir, exist_ok=True)
         with tarfile.open(tar_file) as tar:
-            tar.extractall(path=output_dir)
-            print(f"{tar_file} un-tarred to {output_dir}")
+            if member_filter is None:
+                tar.extractall(path=output_dir)
+                print(f"{tar_file} un-tarred to {output_dir}")
+                return
 
+            to_extract = [m for m in tar.getmembers() if member_filter(m)]
+            if not to_extract:
+                raise ManifestDownloadError(
+                    f"No matching members to extract from {tar_file!r} "
+                    f"(filter returned no hits). Check tar layout vs filter."
+                )
+            for m in to_extract:
+                try:
+                    tar.extract(m, path=output_dir, filter="data")
+                except TypeError:
+                    tar.extract(m, path=output_dir)
+            print(
+                f"{tar_file} selectively extracted {len(to_extract)} member(s) to {output_dir}"
+            )
+
+    except ManifestDownloadError:
+        raise
     except Exception as e:
-        print(f"Failed to untar {tar_file}: {e}")
+        if member_filter is None:
+            print(f"Failed to untar {tar_file}: {e}")
+        else:
+            raise ManifestDownloadError(f"Failed selective untar {tar_file!r}: {e}") from e
 
 
 def _beam_dir_from_ms_tar_name(name: str) -> str:
@@ -1182,7 +1226,8 @@ def download_data_eval(
             extract_root = os.getcwd()
             if src and sbid:
                 extract_root = os.path.join(os.getcwd(), src, str(sbid), "eval")
-            untar_file(path, extract_root)
+            # Avoid unpacking multi-GB calibration tarballs: only LinmosBeamImages FITS.
+            untar_file(path, extract_root, member_filter=_eval_calibration_tar_wanted_member)
     print("Evaluation files downloaded (from manifest URLs)")
 
 
