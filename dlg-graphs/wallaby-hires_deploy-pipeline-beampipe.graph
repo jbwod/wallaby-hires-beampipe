@@ -4355,7 +4355,7 @@
                 },
                 {
                     "name": "Cimager.nwriters",
-                    "value": 2,
+                    "value": 1,
                     "defaultValue": "1",
                     "description": "The number of output cubes to generate in spectral cube mode.",
                     "readonly": false,
