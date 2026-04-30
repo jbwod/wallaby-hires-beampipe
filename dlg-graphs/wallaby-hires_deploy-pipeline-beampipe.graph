@@ -1699,7 +1699,7 @@
             "fields": [
                 {
                     "name": "num_of_copies",
-                    "value": 2,
+                    "value": 3,
                     "defaultValue": "6",
                     "description": "Specifies the number of replications that will be generated of the scatter construct's contents.",
                     "readonly": false,
@@ -3582,8 +3582,8 @@
             "name": "CimagerStaticNew",
             "description": "A set of parameters, which can be set and modified in EAGLE and thus is part of the graph. Multiple serialisation formats are available.",
             "comment": "",
-            "x": 1378.750918191414,
-            "y": 1691.4861270398583,
+            "x": 1379.877482450899,
+            "y": 1690.3595627803734,
             "repositoryUrl": "https://github.com/ICRAR/daliuge",
             "commitHash": "b11f970",
             "paletteDownloadUrl": "https://raw.githubusercontent.com/ICRAR/EAGLE_test_repo/master/daliuge/daliuge-master.palette",
@@ -4385,7 +4385,7 @@
                 },
                 {
                     "name": "Cimager.Channels",
-                    "value": "[10,125]",
+                    "value": "[15,125]",
                     "defaultValue": "",
                     "description": "Channels to be selected from the measurement set. Syntax is [<number>,<start>]. Defaults to all the channels.",
                     "readonly": false,
@@ -5451,7 +5451,7 @@
             "description": "This docker app runs the Yandasoft Imager. It uses an askapsoft compliant configuration file on input, which defines all the required parameters.",
             "comment": "",
             "x": 1931.604481923874,
-            "y": 1629.0401176468076,
+            "y": 1627.9135533873227,
             "repositoryUrl": "",
             "commitHash": "",
             "paletteDownloadUrl": "",
