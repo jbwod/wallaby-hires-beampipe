@@ -1699,7 +1699,7 @@
             "fields": [
                 {
                     "name": "num_of_copies",
-                    "value": 3,
+                    "value": 2,
                     "defaultValue": "6",
                     "description": "Specifies the number of replications that will be generated of the scatter construct's contents.",
                     "readonly": false,
@@ -4325,7 +4325,7 @@
                 },
                 {
                     "name": "Cimager.nchanpercore",
-                    "value": 8,
+                    "value": 5,
                     "defaultValue": "1",
                     "description": "",
                     "readonly": false,
@@ -4385,7 +4385,7 @@
                 },
                 {
                     "name": "Cimager.Channels",
-                    "value": "[25,125]",
+                    "value": "[10,125]",
                     "defaultValue": "",
                     "description": "Channels to be selected from the measurement set. Syntax is [<number>,<start>]. Defaults to all the channels.",
                     "readonly": false,
