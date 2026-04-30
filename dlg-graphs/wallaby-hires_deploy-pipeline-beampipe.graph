@@ -4325,7 +4325,7 @@
                 },
                 {
                     "name": "Cimager.nchanpercore",
-                    "value": 5,
+                    "value": 25,
                     "defaultValue": "1",
                     "description": "",
                     "readonly": false,
@@ -4385,7 +4385,7 @@
                 },
                 {
                     "name": "Cimager.Channels",
-                    "value": "[15,125]",
+                    "value": "[25,125]",
                     "defaultValue": "",
                     "description": "Channels to be selected from the measurement set. Syntax is [<number>,<start>]. Defaults to all the channels.",
                     "readonly": false,
@@ -6141,7 +6141,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && mpirun -np 4 --allow-run-as-root imcontsub -c {c}",
+                    "value": "cd {beam_root} && mpirun -np 2 --allow-run-as-root imcontsub -c {c}",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -np 4 --allow-run-as-root imcontsub",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
