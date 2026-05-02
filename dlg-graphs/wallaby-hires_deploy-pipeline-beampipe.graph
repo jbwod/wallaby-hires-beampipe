@@ -4325,7 +4325,7 @@
                 },
                 {
                     "name": "Cimager.nchanpercore",
-                    "value": 25,
+                    "value": 20,
                     "defaultValue": "1",
                     "description": "",
                     "readonly": false,
@@ -4385,7 +4385,7 @@
                 },
                 {
                     "name": "Cimager.Channels",
-                    "value": "[25,125]",
+                    "value": "[20,125]",
                     "defaultValue": "",
                     "description": "Channels to be selected from the measurement set. Syntax is [<number>,<start>]. Defaults to all the channels.",
                     "readonly": false,
@@ -5451,7 +5451,7 @@
             "description": "This docker app runs the Yandasoft Imager. It uses an askapsoft compliant configuration file on input, which defines all the required parameters.",
             "comment": "",
             "x": 1931.604481923874,
-            "y": 1627.9135533873227,
+            "y": 1627.2200793675515,
             "repositoryUrl": "",
             "commitHash": "",
             "paletteDownloadUrl": "",
