@@ -4325,7 +4325,7 @@
                 },
                 {
                     "name": "Cimager.nchanpercore",
-                    "value": 20,
+                    "value": 5,
                     "defaultValue": "1",
                     "description": "",
                     "readonly": false,
@@ -5550,7 +5550,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && mpirun -np 2 --allow-run-as-root imager -c {c}",
+                    "value": "cd {beam_root} && mpirun -np 4 --allow-run-as-root imager -c {c}",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -x-run-as-root imager",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
