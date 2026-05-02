@@ -1808,7 +1808,7 @@
             "outputAppFields": [],
             "inputApplicationName": "GenericScatterApp",
             "inputApplicationType": "DALiuGEApp",
-            "inputApplicationId": "77d7ae07-f141-4d84-92ff-f505867b7421",
+            "inputApplicationId": "9e421454-a5c4-49a2-b169-725ceafea09a",
             "inputApplicationDescription": "",
             "inputApplicationComment": "",
             "outputApplicationName": "",
@@ -5550,7 +5550,7 @@
                 },
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && mpirun -np 2 --allow-run-as-root imager -c {c}",
+                    "value": "cd {beam_root} && mpirun -np 2 imager -c {c}",
                     "defaultValue": "cd $DLG_ROOT/testdata && mpirun -x-run-as-root imager",
                     "description": "The command line to run within the docker instance",
                     "readonly": false,
@@ -5667,6 +5667,21 @@
                     "id": "faf43f22-e4f5-477b-86e4-9442fb91bbef",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
+                },
+                {
+                    "name": "shmSize",
+                    "value": 1073741824,
+                    "defaultValue": "",
+                    "description": "",
+                    "readonly": false,
+                    "type": "Integer",
+                    "precious": false,
+                    "options": [],
+                    "positional": false,
+                    "encoding": "pickle",
+                    "id": "9849b1fc-1631-4353-86d4-05c4304cd474",
+                    "parameterType": "ComponentParameter",
+                    "usage": "NoPort"
                 }
             ],
             "inputAppFields": [],
