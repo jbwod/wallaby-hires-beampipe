@@ -10,6 +10,7 @@ import base64
 import binascii
 import concurrent.futures
 import csv
+import glob
 import hashlib
 import io
 import json
@@ -35,8 +36,41 @@ class ManifestDownloadError(RuntimeError):
     Propagates to DALiuGE so the run is marked failed for tracking.
     """
 
-# Suffix to append to evaluation_file for linmos primary beam path (inside extracted tar)
-EVALUATION_FILE_PATH_SUFFIX = "LinmosBeamImages/akpb.iquv.square_6x6.54.1295MHz.SB32736.cube.fits"
+def _select_primary_beam_cube_fits_in_directory(
+    dirpath: str, filename_hint: str = ""
+) -> str:
+    if not dirpath or not os.path.isdir(dirpath):
+        return ""
+    candidates = sorted(glob.glob(os.path.join(dirpath, "akpb.iquv.*.cube.fits")))
+    if not candidates:
+        candidates = sorted(glob.glob(os.path.join(dirpath, "*.cube.fits")))
+    if not candidates:
+        return ""
+    if len(candidates) == 1:
+        return candidates[0]
+    hint = os.path.basename(filename_hint) if filename_hint else ""
+    if hint and ".SB" in hint:
+        prefix = hint.split(".SB", 1)[0]
+        for c in candidates:
+            if os.path.basename(c).startswith(prefix):
+                return c
+    return candidates[0]
+
+
+def _resolve_primary_beam_cube_path(requested_abs_path: str) -> str:
+    if not requested_abs_path:
+        return requested_abs_path
+    p = os.path.normpath(requested_abs_path)
+    if os.path.isdir(p):
+        chosen = _select_primary_beam_cube_fits_in_directory(p)
+        return chosen if chosen else requested_abs_path
+    if os.path.isfile(p):
+        return p
+    parent = os.path.dirname(p)
+    if os.path.isdir(parent):
+        chosen = _select_primary_beam_cube_fits_in_directory(parent, os.path.basename(p))
+        return chosen if chosen else requested_abs_path
+    return requested_abs_path
 
 
 def _unwrap_dlg_port_layer(value):
@@ -277,12 +311,7 @@ def _build_csv_string_from_dataset_rows(rows: list) -> str:
         vsys = r.get("vsys")
         vsys_str = "" if vsys is None else str(vsys)
         eval_file = r.get("evaluation_file", "")
-        # Match original: evaluation_file_path = evaluation_file.replace(".tar", f"/{suffix}")
-        eval_file_path = (
-            eval_file.replace(".tar", f"/{EVALUATION_FILE_PATH_SUFFIX}")
-            if eval_file
-            else ""
-        )
+        eval_file_path = "LinmosBeamImages" if eval_file else ""
         writer.writerow([
             r.get("name", ""),
             r.get("ra_string", ""),
@@ -843,11 +872,26 @@ def untar_file(
 
 
 def _beam_dir_from_ms_tar_name(name: str) -> str:
-    # Match both \"_beam25_\" and \"_beam25\" forms.
-    m = re.search(r"_beam(\d+)(?:_|\b)", name or "")
-    if not m:
-        return "beam"
-    return f"beam{int(m.group(1))}"
+    """
+    Infer the beam directory name (beamNN) from an MS tar filename.
+
+    Supports:
+    - pilot: "..._beam25_..." or "..._beam25..." (case-insensitive)
+    - WALLABY: "..._B00..." / "..._B14..." (case-insensitive)
+    """
+    s = (name or "").strip()
+
+    # Legacy
+    m = re.search(r"_beam(\d+)(?:_|\b)", s, flags=re.IGNORECASE)
+    if m:
+        return f"beam{int(m.group(1))}"
+
+    # New
+    matches = re.findall(r"(?:^|_)B(\d{2})(?:_|\b)", s, flags=re.IGNORECASE)
+    if matches:
+        return f"beam{int(matches[-1])}"
+
+    return "beam"
 
 
 def degrees_to_hms(degrees: float) -> tuple:
@@ -1474,6 +1518,7 @@ def process_CSV_str(csv_string: str) -> list:
             evaluation_file = os.path.abspath(
                 os.path.join(os.getcwd(), source_identifier, str(sbid), "eval", eval_rel)
             )
+            evaluation_file = _resolve_primary_beam_cube_path(evaluation_file)
         else:
             dataset_path = ms_name
 
