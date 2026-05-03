@@ -460,14 +460,14 @@ def read_and_process_csv(filename: str) -> list:
                 "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
                 "Cimager.write.weightsimage": "true",
                 "Vsys": Vsys,
-                "imcontsub.inputfitscube": f"image.restored.{name}",
-                "imcontsub.outputfitscube": f"image.restored.{name}.contsub",
-                "linmos.names": f"[image.restored.{name}.contsub]",
+                "imcontsub.inputfitscube": _restored_cube_base(name),
+                "imcontsub.outputfitscube": _contsub_cube_base(name),
+                "linmos.names": f"[{_contsub_cube_base(name)}]",
                 "linmos.weights": f"[weights.{name}]",
-                "linmos.outname": f"image.restored.{name}.contsub_holo",
+                "linmos.outname": _contsub_holo_outname(name),
                 "linmos.outweight": f"weights.{name}.contsub_holo",
                 "linmos.feeds.centre": f"[{RA_beam_string},{Dec_beam_string}]",
-                f"linmos.feeds.image.restored.{name}.contsub": "[0.0,0.0]",
+                f"linmos.feeds.image.{name}.restored.contsub": "[0.0,0.0]",
                 "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
             }
 
@@ -892,6 +892,21 @@ def _beam_dir_from_ms_tar_name(name: str) -> str:
         return f"beam{int(matches[-1])}"
 
     return "beam"
+
+
+def _restored_cube_base(image_stem: str) -> str:
+    stem = (image_stem or "").strip()
+    if stem.startswith("image."):
+        stem = stem[len("image.") :]
+    return f"image.{stem}.restored"
+
+
+def _contsub_cube_base(image_stem: str) -> str:
+    return f"{_restored_cube_base(image_stem)}.contsub"
+
+
+def _contsub_holo_outname(image_stem: str) -> str:
+    return f"{_restored_cube_base(image_stem)}.contsub_holo"
 
 
 def degrees_to_hms(degrees: float) -> tuple:
@@ -1324,7 +1339,7 @@ def process_CSV_mosaic(filename: str) -> list:
                     prefix = f"{source_identifier}/{sbid}/"
                 elif sbid:
                     prefix = f"{sbid}/"
-                linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo"
+                linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(name_no_tar)}"
                 weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo"
 
                 # Append to the lists
@@ -1404,14 +1419,14 @@ def process_CSV(filename: str) -> list:
                 "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
                 "Cimager.write.weightsimage": "true",
                 "Vsys": Vsys,
-                "imcontsub.inputfitscube": f"image.restored.{name}",
-                "imcontsub.outputfitscube": f"image.restored.{name}.contsub",
-                "linmos.names": f"[image.restored.{name}.contsub]",
+                "imcontsub.inputfitscube": _restored_cube_base(name),
+                "imcontsub.outputfitscube": _contsub_cube_base(name),
+                "linmos.names": f"[{_contsub_cube_base(name)}]",
                 "linmos.weights": f"[weights.{name}]",
-                "linmos.outname": f"image.restored.{name}.contsub_holo",
+                "linmos.outname": _contsub_holo_outname(name),
                 "linmos.outweight": f"weights.{name}.contsub_holo",
                 "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-                f"linmos.feeds.image.restored.{name}.contsub": "[0.0,0.0]",
+                f"linmos.feeds.image.{name}.restored.contsub": "[0.0,0.0]",
                 "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
             }
 
@@ -1531,14 +1546,14 @@ def process_CSV_str(csv_string: str) -> list:
             "Cimager.write.weightsimage": "true",
             "Vsys": Vsys,
             "imcontsub.beam_root": beam_root if (source_identifier and sbid) else "",
-            "imcontsub.inputfitscube": f"image.restored.{image_stem}",
-            "imcontsub.outputfitscube": f"image.restored.{image_stem}.contsub",
-            "linmos.names": f"[image.restored.{image_stem}.contsub]",
+            "imcontsub.inputfitscube": _restored_cube_base(image_stem),
+            "imcontsub.outputfitscube": _contsub_cube_base(image_stem),
+            "linmos.names": f"[{_contsub_cube_base(image_stem)}]",
             "linmos.weights": f"[weights.{image_stem}]",
-            "linmos.outname": f"image.restored.{image_stem}.contsub_holo",
+            "linmos.outname": _contsub_holo_outname(image_stem),
             "linmos.outweight": f"weights.{image_stem}.contsub_holo",
             "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-            f"linmos.feeds.image.restored.{image_stem}.contsub": "[0.0,0.0]",
+            f"linmos.feeds.image.{image_stem}.restored.contsub": "[0.0,0.0]",
             "linmos.beam_root": beam_root if (source_identifier and sbid) else "",
             "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
         }
@@ -1605,7 +1620,7 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
             elif sbid:
                 prefix = f"{sbid}/"
             # linmos.imagetype=fits makes linmos append ".fits" automatically.
-            linmos_image = f"{prefix}{beam_dir}/image.restored.{name_no_tar}.contsub_holo"
+            linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(name_no_tar)}"
             weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo"
 
             # Append to the lists
