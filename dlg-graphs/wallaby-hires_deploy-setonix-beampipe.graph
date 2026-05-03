@@ -1808,7 +1808,7 @@
             "outputAppFields": [],
             "inputApplicationName": "GenericScatterApp",
             "inputApplicationType": "DALiuGEApp",
-            "inputApplicationId": "908bff72-98fe-46fb-a2d2-3652b8792cba",
+            "inputApplicationId": "ff64edd8-0474-4bfa-ac22-9070c966cd26",
             "inputApplicationDescription": "",
             "inputApplicationComment": "",
             "outputApplicationName": "",
@@ -9257,7 +9257,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "singularity exec --bind $PWD:/askapbuffer,/scratch:/scratch /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif cimager -c {c}",
+                    "value": "cd {beam_root} && unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif cimager -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -9588,7 +9588,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "singularity exec --bind $PWD:/askapbuffer,/scratch:/scratch /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif imcontsub -c {c}",
+                    "value": "cd {beam_root} && unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif imcontsub -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -9919,7 +9919,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "singularity exec --bind $PWD:/askapbuffer,/scratch:/scratch /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif linmos -c {c}",
+                    "value": "cd {beam_root} && unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif linmos -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -10249,7 +10249,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "singularity exec --bind $PWD:/askapbuffer,/scratch:/scratch /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif cimager -c {c}",
+                    "value": "unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif linmos -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
