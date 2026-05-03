@@ -9536,7 +9536,7 @@
                     "positional": false,
                     "encoding": "path",
                     "id": "35337b8b-7a95-4794-8bfb-f81341a13d56",
-                    "parameterType": "ComponentParameter",
+                    "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
                 },
                 {
@@ -9852,7 +9852,7 @@
                     "positional": false,
                     "encoding": "path",
                     "id": "431ea01b-4251-4db7-abfc-4cad65f9dae6",
-                    "parameterType": "ComponentParameter",
+                    "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
                 },
                 {
@@ -10183,7 +10183,7 @@
                     "positional": false,
                     "encoding": "path",
                     "id": "91ae5490-209a-44ab-b8b4-89819c244af0",
-                    "parameterType": "ComponentParameter",
+                    "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
                 },
                 {
@@ -10513,7 +10513,7 @@
                     "positional": false,
                     "encoding": "path",
                     "id": "c68f57a4-68a5-4c78-99e7-35dd76c1d5f6",
-                    "parameterType": "ComponentParameter",
+                    "parameterType": "ApplicationArgument",
                     "usage": "InputPort"
                 },
                 {
