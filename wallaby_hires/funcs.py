@@ -894,11 +894,33 @@ def _beam_dir_from_ms_tar_name(name: str) -> str:
     return "beam"
 
 
+def _ms_dataset_basename(name: str) -> str:
+    s = (name or "").strip()
+    if s.endswith(".tar"):
+        s = s[: -len(".tar")]
+    base = os.path.basename(s)
+    if base.lower().endswith(".ms"):
+        return base
+    return f"{base}.ms" if base else ""
+
+
+def _logical_field_id(name: str) -> str:
+    s = (name or "").strip()
+    if s.endswith(".tar"):
+        s = s[: -len(".tar")]
+    s = os.path.basename(s)
+    if s.lower().endswith(".ms"):
+        s = s[: -len(".ms")]
+    if s.lower().startswith("image."):
+        s = s[len("image.") :]
+    if s.lower().endswith(".ms"):
+        s = s[: -len(".ms")]
+    return s
+
+
 def _restored_cube_base(image_stem: str) -> str:
-    stem = (image_stem or "").strip()
-    if stem.startswith("image."):
-        stem = stem[len("image.") :]
-    return f"image.{stem}.restored"
+    fid = _logical_field_id(image_stem)
+    return f"image.{fid}.restored"
 
 
 def _contsub_cube_base(image_stem: str) -> str:
@@ -1330,6 +1352,7 @@ def process_CSV_mosaic(filename: str) -> list:
             if name:  # Only process if 'name' is not empty
                 # Extract the base name from 'name'
                 name_no_tar = name[: -len(".tar")] if name.endswith(".tar") else name
+                field_id = _logical_field_id(name_no_tar)
                 extracted_name = name_no_tar.split("_")[0]
                 beam_dir = _beam_dir_from_ms_tar_name(name_no_tar)
 
@@ -1339,8 +1362,8 @@ def process_CSV_mosaic(filename: str) -> list:
                     prefix = f"{source_identifier}/{sbid}/"
                 elif sbid:
                     prefix = f"{sbid}/"
-                linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(name_no_tar)}"
-                weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo"
+                linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(field_id)}"
+                weight_image = f"{prefix}{beam_dir}/weights.{field_id}.contsub_holo"
 
                 # Append to the lists
                 linmos_images_string.append(linmos_image)
@@ -1413,20 +1436,24 @@ def process_CSV(filename: str) -> list:
             evaluation_file = row[5].strip()
 
             # Create the desired output dictionary
+            fid = _logical_field_id(name)
             output_dict = {
-                "Cimager.dataset": f"$DLG_ROOT/testdata/{name}.ms",
-                "Cimager.Images.Names": f"[image.{name}]",
+                "Cimager.dataset": f"$DLG_ROOT/testdata/{_ms_dataset_basename(name)}",
+                "Cimager.Images.Names": f"[image.{fid}]",
                 "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
+                f"Cimager.Images.image.{fid}.nchan": 20,
+                f"Cimager.Images.image.{fid}.polarisation": "[I]",
+                f"Cimager.Images.image.{fid}.nterms": 1,
                 "Cimager.write.weightsimage": "true",
                 "Vsys": Vsys,
                 "imcontsub.inputfitscube": _restored_cube_base(name),
                 "imcontsub.outputfitscube": _contsub_cube_base(name),
                 "linmos.names": f"[{_contsub_cube_base(name)}]",
-                "linmos.weights": f"[weights.{name}]",
+                "linmos.weights": f"[weights.{fid}]",
                 "linmos.outname": _contsub_holo_outname(name),
-                "linmos.outweight": f"weights.{name}.contsub_holo",
+                "linmos.outweight": f"weights.{fid}.contsub_holo",
                 "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-                f"linmos.feeds.image.{name}.restored.contsub": "[0.0,0.0]",
+                f"linmos.feeds.image.{fid}.restored.contsub": "[0.0,0.0]",
                 "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
             }
 
@@ -1515,13 +1542,15 @@ def process_CSV_str(csv_string: str) -> list:
         ms_name = name
         if ms_name.endswith(".tar"):
             ms_name = ms_name[: -len(".tar")]
-        image_stem = ms_name
+        ms_dir = _ms_dataset_basename(ms_name)
+        field_id = _logical_field_id(ms_name)
         beam_dir = _beam_dir_from_ms_tar_name(ms_name)
+        beam_root = ""
         if source_identifier and sbid:
             beam_root = os.path.abspath(
                 os.path.join(os.getcwd(), source_identifier, str(sbid), beam_dir)
             )
-            dataset_path = os.path.join(beam_root, ms_name)
+            dataset_path = os.path.join(beam_root, ms_dir)
             eval_rel = str(evaluation_file).lstrip("/").strip()
             marker = "LinmosBeamImages/"
             if marker in eval_rel:
@@ -1535,25 +1564,34 @@ def process_CSV_str(csv_string: str) -> list:
             )
             evaluation_file = _resolve_primary_beam_cube_path(evaluation_file)
         else:
-            dataset_path = ms_name
+            if os.path.isabs(ms_name):
+                dataset_path = ms_name
+            else:
+                rel_dir = os.path.dirname(ms_name)
+                dataset_path = (
+                    os.path.join(rel_dir, ms_dir) if rel_dir else ms_dir
+                )
 
         # Create the desired output dictionary
         output_dict = {
             "Cimager.dataset": f"\"{dataset_path}\"",
             "Cimager.beam_root": beam_root if (source_identifier and sbid) else "",
-            "Cimager.Images.Names": f"[image.{image_stem}]",
+            "Cimager.Images.Names": f"[image.{field_id}]",
             "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
+            f"Cimager.Images.image.{field_id}.nchan": 20,
+            f"Cimager.Images.image.{field_id}.polarisation": "[I]",
+            f"Cimager.Images.image.{field_id}.nterms": 1,
             "Cimager.write.weightsimage": "true",
             "Vsys": Vsys,
             "imcontsub.beam_root": beam_root if (source_identifier and sbid) else "",
-            "imcontsub.inputfitscube": _restored_cube_base(image_stem),
-            "imcontsub.outputfitscube": _contsub_cube_base(image_stem),
-            "linmos.names": f"[{_contsub_cube_base(image_stem)}]",
-            "linmos.weights": f"[weights.{image_stem}]",
-            "linmos.outname": _contsub_holo_outname(image_stem),
-            "linmos.outweight": f"weights.{image_stem}.contsub_holo",
+            "imcontsub.inputfitscube": _restored_cube_base(ms_name),
+            "imcontsub.outputfitscube": _contsub_cube_base(ms_name),
+            "linmos.names": f"[{_contsub_cube_base(ms_name)}]",
+            "linmos.weights": f"[weights.{field_id}]",
+            "linmos.outname": _contsub_holo_outname(ms_name),
+            "linmos.outweight": f"weights.{field_id}.contsub_holo",
             "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-            f"linmos.feeds.image.{image_stem}.restored.contsub": "[0.0,0.0]",
+            f"linmos.feeds.image.{field_id}.restored.contsub": "[0.0,0.0]",
             "linmos.beam_root": beam_root if (source_identifier and sbid) else "",
             "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
         }
@@ -1610,6 +1648,7 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
         if name:  # Only process if 'name' is not empty
             # Extract the base name from 'name'
             name_no_tar = name[: -len(".tar")] if name.endswith(".tar") else name
+            field_id = _logical_field_id(name_no_tar)
             extracted_name = name_no_tar.split("_")[0]
             beam_dir = _beam_dir_from_ms_tar_name(name_no_tar)
 
@@ -1620,8 +1659,8 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
             elif sbid:
                 prefix = f"{sbid}/"
             # linmos.imagetype=fits makes linmos append ".fits" automatically.
-            linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(name_no_tar)}"
-            weight_image = f"{prefix}{beam_dir}/weights.{name_no_tar}.contsub_holo"
+            linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(field_id)}"
+            weight_image = f"{prefix}{beam_dir}/weights.{field_id}.contsub_holo"
 
             # Append to the lists
             linmos_images_string.append(linmos_image)
