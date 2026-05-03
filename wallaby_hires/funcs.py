@@ -1261,6 +1261,13 @@ def download_data_ms(
             if src and sbid:
                 beam_dir = _beam_dir_from_ms_tar_name(ms_name)
                 extract_root = os.path.join(os.getcwd(), src, str(sbid), beam_dir)
+            expected_ms = os.path.join(extract_root, _ms_dataset_basename(ms_name))
+            if os.path.isdir(expected_ms):
+                print(
+                    f"Skipping untar of {os.path.basename(file)!r}: "
+                    f"MS directory already exists at {expected_ms!r}"
+                )
+                continue
             untar_file(file, extract_root)
     print(".ms files downloaded (from manifest URLs)")
 
