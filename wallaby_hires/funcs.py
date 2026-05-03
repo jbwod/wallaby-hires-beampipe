@@ -454,20 +454,21 @@ def read_and_process_csv(filename: str) -> list:
             Dec_beam_string = Dec_string
 
             # Create the desired output dictionary
+            fid = _logical_field_id(name)
             output_dict = {
-                "Cimager.dataset": f"$DLG_ROOT/testdata/{name}.ms",
-                "Cimager.Images.Names": f"[image.{name}]",
+                "Cimager.dataset": f"$DLG_ROOT/testdata/{_ms_dataset_basename(name)}",
+                "Cimager.Images.Names": f"[image.{fid}]",
                 "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
                 "Cimager.write.weightsimage": "true",
                 "Vsys": Vsys,
                 "imcontsub.inputfitscube": _restored_cube_base(name),
                 "imcontsub.outputfitscube": _contsub_cube_base(name),
                 "linmos.names": f"[{_contsub_cube_base(name)}]",
-                "linmos.weights": f"[weights.{name}]",
+                "linmos.weights": f"[weights.{fid}]",
                 "linmos.outname": _contsub_holo_outname(name),
-                "linmos.outweight": f"weights.{name}.contsub_holo",
+                "linmos.outweight": f"weights.{fid}.contsub_holo",
                 "linmos.feeds.centre": f"[{RA_beam_string},{Dec_beam_string}]",
-                f"linmos.feeds.image.{name}.restored.contsub": "[0.0,0.0]",
+                f"linmos.feeds.image.{fid}.restored.contsub": "[0.0,0.0]",
                 "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
             }
 
@@ -515,6 +516,32 @@ def _dynamic_str_to_obj(text: str):
             "dynamic_parset is not JSON and is not valid base64"
         ) from e
     return _dynamic_buffer_to_obj(raw)
+
+
+def _drop_conflicting_parent_cimager_image_keys(static_parset: dict, prefix: str) -> None:
+    """
+    Remove parent-level ``<prefix>.Images.{nchan,polarisation,nterms}`` when the
+    parset names an image (``<prefix>.Images.Names``) and/or has per-image keys
+    under ``<prefix>.Images.image.<name>.*``. Those parent keys duplicate cube
+    semantics and can break CASA coordinate setup during cimager restore.
+    """
+    p = (prefix or "").strip()
+    if not p:
+        return
+    pimg = f"{p}.Images.image."
+    pnames = f"{p}.Images.Names"
+    if not (
+        pnames in static_parset
+        or any(str(k).startswith(pimg) for k in static_parset)
+    ):
+        return
+    for bad in (
+        f"{p}.Images.nchan",
+        f"{p}.Images.polarisation",
+        f"{p}.Images.polarization",
+        f"{p}.Images.nterms",
+    ):
+        static_parset.pop(bad, None)
 
 
 def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
@@ -591,9 +618,13 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
                         "description": "",
                     }
 
+    _drop_conflicting_parent_cimager_image_keys(static_parset, prefix)
+
     serialp = "\n".join([f"{x}={y['value']}" for x, y in static_parset.items()])
 
     return serialp
+
+
 def extract_beam_root(dynamic_parset, prefix: str) -> str:
     prefix = (prefix or "").strip()
     tolist = getattr(dynamic_parset, "tolist", None)
@@ -1441,9 +1472,6 @@ def process_CSV(filename: str) -> list:
                 "Cimager.dataset": f"$DLG_ROOT/testdata/{_ms_dataset_basename(name)}",
                 "Cimager.Images.Names": f"[image.{fid}]",
                 "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
-                f"Cimager.Images.image.{fid}.nchan": 20,
-                f"Cimager.Images.image.{fid}.polarisation": "[I]",
-                f"Cimager.Images.image.{fid}.nterms": 1,
                 "Cimager.write.weightsimage": "true",
                 "Vsys": Vsys,
                 "imcontsub.inputfitscube": _restored_cube_base(name),
@@ -1578,9 +1606,6 @@ def process_CSV_str(csv_string: str) -> list:
             "Cimager.beam_root": beam_root if (source_identifier and sbid) else "",
             "Cimager.Images.Names": f"[image.{field_id}]",
             "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
-            f"Cimager.Images.image.{field_id}.nchan": 20,
-            f"Cimager.Images.image.{field_id}.polarisation": "[I]",
-            f"Cimager.Images.image.{field_id}.nterms": 1,
             "Cimager.write.weightsimage": "true",
             "Vsys": Vsys,
             "imcontsub.beam_root": beam_root if (source_identifier and sbid) else "",
