@@ -9257,7 +9257,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && \\\nunset LD_PRELOAD LD_LIBRARY_PATH; \\\nunset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; \\\nexport OMP_NUM_THREADS=1; \\\nsrun --exclusive -N 1 -n 2 -c 1 \\\n  singularity exec --bind $PWD:/askapbuffer \\\n  /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif \\\n  imager -c {c}",
+                    "value": "cd {beam_root} && unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; export OMP_NUM_THREADS=1; srun -N 1 -n 2 -c 1 singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif imager -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
