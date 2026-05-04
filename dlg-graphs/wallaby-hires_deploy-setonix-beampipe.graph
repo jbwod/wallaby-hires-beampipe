@@ -9257,7 +9257,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && \\\nunset LD_PRELOAD LD_LIBRARY_PATH; \\\nunset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; \\\ncat > imager_job.sh <<'EOF'\n#!/bin/bash -l\n#SBATCH --account=pawsey0411\n#SBATCH --partition=work\n#SBATCH --nodes=1\n#SBATCH --ntasks=2\n#SBATCH --ntasks-per-node=2\n#SBATCH --cpus-per-task=1\n#SBATCH --mem=16G\n#SBATCH --time=00:20:00\n#SBATCH --threads-per-core=1\n#SBATCH --job-name=BP-imager\n#SBATCH --output=imager-%j.out\n#SBATCH --error=imager-%j.err\n#SBATCH --export=ALL\n\nmodule load singularity/4.1.0-askap\nmodule use /group/askap/modulefiles\n\nexport OMP_NUM_THREADS=1\nexport FI_CXI_DEFAULT_VNI=$(od -vAn -N4 -tu < /dev/urandom)\n\necho \"$(date)\"\necho \"HOST=$(hostname)\"\necho \"PWD=$(pwd)\"\necho \"SLURM_JOB_ID=${SLURM_JOB_ID}\"\necho \"CONFIG=__CONFIG__\"\n\nls -lh \"__CONFIG__\"\n\nsrun --export=ALL \\\n  --ntasks=2 \\\n  --ntasks-per-node=2 \\\n  singularity exec \\\n    --bind \"$PWD:/askapbuffer,/scratch:/scratch\" \\\n    /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif \\\n    imager -c \"__CONFIG__\"\n\nrc=$?\n\necho \"$(date), rc=${rc}\"\nls -lh image* weights* *.fits 2>/dev/null || true\n\nexit ${rc}\nEOF\nsed -i \"s#__CONFIG__#{c}#g\" imager_job.sh\nchmod +x imager_job.sh\necho \"Submitting imager child job from $(pwd)\"\nsbatch --wait imager_job.sh",
+                    "value": "cd {beam_root} && \\\ncat > imager_job.sh <<EOF\n#!/bin/bash --login\n#SBATCH --account=pawsey0411\n#SBATCH --partition=work\n#SBATCH --nodes=1\n#SBATCH --ntasks=2\n#SBATCH --ntasks-per-node=2\n#SBATCH --cpus-per-task=1\n#SBATCH --mem=12G\n#SBATCH --time=00:20:00\n#SBATCH --job-name=BP-imager\n#SBATCH --output=imager-%j.out\n#SBATCH --error=imager-%j.err\n#SBATCH --export=NONE\n\nmodule use /group/askap/modulefiles\nmodule load singularity/4.1.0-askap\n\nexport OMP_NUM_THREADS=1\nexport FI_CXI_DEFAULT_VNI=\\$(od -vAn -N4 -tu < /dev/urandom)\n\nunset SLURM_CPU_BIND SLURM_CPU_BIND_LIST SLURM_CPU_BIND_TYPE SLURM_CPU_BIND_VERBOSE\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU\n\nCONFIG=\"{c}\"\n\necho \"IMAGER START \\$(date)\"\necho \"HOST=\\$(hostname)\"\necho \"PWD=\\$(pwd)\"\necho \"CONFIG=\\${CONFIG}\"\nls -lh \"\\${CONFIG}\"\n\nsrun -N 1 -n 2 -c 1 -m block:block:block \\\n  singularity exec \\\n    --bind \"\\$PWD:/askapbuffer,/scratch:/scratch\" \\\n    /software/projects/pawsey0411/jblackwood/singularity/askapsoft_1.23.0-mpich.sif \\\n    imager -c \"\\${CONFIG}\"\n\nrc=\\$?\necho \"IMAGER END \\$(date), rc=\\${rc}\"\nls -lh image* weights* *.fits 2>/dev/null || true\nexit \"\\${rc}\"\nEOF\n\nchmod +x imager_job.sh\nsbatch --wait --export=NONE imager_job.sh",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -9588,7 +9588,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif imcontsub -c {c}",
+                    "value": "cd {beam_root}; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/jblackwood/singularity/askapsoft_1.23.0-mpich.sif imcontsub -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -9919,7 +9919,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "cd {beam_root} && unset LD_PRELOAD LD_LIBRARY_PATH; unset SINGULARITYENV_LD_PRELOAD SINGULARITYENV_LD_LIBRARY_PATH; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/awicenec/singularity/askapsoft_1.17.5-mpich.sif linmos -c {c}",
+                    "value": "cd {beam_root}; singularity exec --bind $PWD:/askapbuffer /software/projects/pawsey0411/jblackwood/singularity/askapsoft_1.23.0-mpich.sif linmos -c {c}",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
