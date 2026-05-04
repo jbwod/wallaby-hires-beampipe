@@ -951,7 +951,7 @@ def _logical_field_id(name: str) -> str:
 
 def _restored_cube_base(image_stem: str) -> str:
     fid = _logical_field_id(image_stem)
-    return f"image.{fid}.restored"
+    return f"image.restored.{fid}"
 
 
 def _contsub_cube_base(image_stem: str) -> str:
