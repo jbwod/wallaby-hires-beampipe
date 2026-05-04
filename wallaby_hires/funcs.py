@@ -468,7 +468,7 @@ def read_and_process_csv(filename: str) -> list:
                 "linmos.outname": _contsub_holo_outname(name),
                 "linmos.outweight": f"weights.{fid}.contsub_holo",
                 "linmos.feeds.centre": f"[{RA_beam_string},{Dec_beam_string}]",
-                f"linmos.feeds.image.{fid}.restored.contsub": "[0.0,0.0]",
+                f"linmos.feeds.image.restored.{fid}.contsub": "[0.0,0.0]",
                 "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
             }
 
@@ -1488,7 +1488,7 @@ def process_CSV(filename: str) -> list:
                 "linmos.outname": _contsub_holo_outname(name),
                 "linmos.outweight": f"weights.{fid}.contsub_holo",
                 "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-                f"linmos.feeds.image.{fid}.restored.contsub": "[0.0,0.0]",
+                f"linmos.feeds.image.restored.{fid}.contsub": "[0.0,0.0]",
                 "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
             }
 
@@ -1623,7 +1623,7 @@ def process_CSV_str(csv_string: str) -> list:
             "linmos.outname": _contsub_holo_outname(ms_name),
             "linmos.outweight": f"weights.{field_id}.contsub_holo",
             "linmos.feeds.centre": f"[{RA_string},{Dec_string}]",
-            f"linmos.feeds.image.{field_id}.restored.contsub": "[0.0,0.0]",
+            f"linmos.feeds.image.restored.{field_id}.contsub": "[0.0,0.0]",
             "linmos.beam_root": beam_root if (source_identifier and sbid) else "",
             "linmos.primarybeam.ASKAP_PB.image": evaluation_file,
         }
