@@ -1,0 +1,17 @@
+linmos.names=[image.restored.HIPASSJ1318-21_A_beam26_10arc_split.ms.contsub]
+linmos.weights=[weights.HIPASSJ1318-21_A_beam26_10arc_split.ms]
+linmos.outname=image.restored.HIPASSJ1318-21_A_beam26_10arc_split.ms.contsub_holo
+linmos.outweight=weights.HIPASSJ1318-21_A_beam26_10arc_split.ms.contsub_holo
+linmos.primarybeam.ASKAP_PB.image=/Users/jblackwo/beampipe-core/wallaby-hires-beampipe/_mock_dlg_workspace/wallaby-hires_deploy-pipeline-beampipe3_2026-04-26T10-02-02.375502/HIPASSJ1318-21/34166/eval/eval.tar/some_pb.fits
+linmos.beam_root=/Users/jblackwo/beampipe-core/wallaby-hires-beampipe/_mock_dlg_workspace/wallaby-hires_deploy-pipeline-beampipe3_2026-04-26T10-02-02.375502/HIPASSJ1318-21/34166/beam26
+Cimager.dataset="/Users/jblackwo/beampipe-core/wallaby-hires-beampipe/_mock_dlg_workspace/wallaby-hires_deploy-pipeline-beampipe3_2026-04-26T10-02-02.375502/HIPASSJ1318-21/34166/beam26/HIPASSJ1318-21_A_beam26_10arc_split.ms"
+Cimager.beam_root=/Users/jblackwo/beampipe-core/wallaby-hires-beampipe/_mock_dlg_workspace/wallaby-hires_deploy-pipeline-beampipe3_2026-04-26T10-02-02.375502/HIPASSJ1318-21/34166/beam26
+Cimager.Images.Names=[image.HIPASSJ1318-21_A_beam26_10arc_split.ms]
+Cimager.Images.direction=[13:18:00,-21:00:00, J2000]
+Cimager.write.weightsimage=true
+Vsys=1234.0
+imcontsub.beam_root=/Users/jblackwo/beampipe-core/wallaby-hires-beampipe/_mock_dlg_workspace/wallaby-hires_deploy-pipeline-beampipe3_2026-04-26T10-02-02.375502/HIPASSJ1318-21/34166/beam26
+imcontsub.inputfitscube=image.restored.HIPASSJ1318-21_A_beam26_10arc_split.ms
+imcontsub.outputfitscube=image.restored.HIPASSJ1318-21_A_beam26_10arc_split.ms.contsub
+linmos.feeds.centre=[13:18:00,-21:00:00]
+linmos.feeds.image.restored.HIPASSJ1318-21_A_beam26_10arc_split.ms.contsub=[0.0,0.0]

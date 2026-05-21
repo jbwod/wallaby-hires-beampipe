@@ -1,74 +1,214 @@
-# wallaby-hires
+# WALLABY hi-res (Beampipe)
 
-## WALLABY “high-res” imaging pipeline overview
-- One of the key data products to be released as part of the full WALLABY survey are the high-resolution 12 arcsec “postage stamps”, for a select sub-sample of galaxies. 
-- The sample will include all HIPASS galaxies, but additionally will also include pre-selected galaxies based on their optical properties that are likely to be well resolved with the 12’’ beam.
-- To test the imaging pipeline to produce the high-resolution images, we targeted a sample of HIPASS galaxies in the Pilot Phase 2 fields (NGC 5044, NGC 4808 and Vela). 
-- We split out visibilities, including the longest 6 km baselines (for the highest achievable resolution) from the calibrated and UV continuum subtracted visibilities that are produced as part of the default WALLABY ASKAPSoft imaging pipeline.
-- For every source, we split out visibilities for up to three neighbouring beams encompassing and surrounding the source from each footprint.
-- This amounts to up to a total of 6 beams for each source.
-- For each beam, we split out the visibilities for 250 channels encompassing the velocity range where the source is expected (approximately ~ 1000 km/s velocity bandwidth) to limit the dataset size.
-- The systemic velocity of each source is obtained from the relevant HIPASS catalogue.
-- Each data set (for a single beam) is typically about 15 GB in size.
-- So, for each source, the combined visibility dataset size can be up to ~90 GB.
-- The split-out datasets for each beam for each source are then uploaded to CASDA.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/4414e79f-7431-4999-b2ef-28cf9f0b254e">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/648d6a14-e1ee-4297-aa36-ff58f130e5d8">
+  <img alt="" src="https://github.com/user-attachments/assets/648d6a14-e1ee-4297-aa36-ff58f130e5d8" />
+</picture>
 
-## WALLABY "hi-res" imaging pipeline implemented as a DALiuGE graph
-- The existing test [WALLABY](https://wallaby-survey.org/) hires pipeline was a simple, manually invoked script that was not under version control. It mostly produced configuration files for [ASKAPsoft](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/pipelines/introduction.html) and SLURM. 
-- The new pipeline is implemented as a [DALiuGE](https://daliuge.readthedocs.io/en/latest/) workflow, which is kept under version control on GitHub along with the required additional software components.
-- The workflow and the individual components are configurable using the [EAGLE](https://eagle-dlg.readthedocs.io/en/master/installation.html#) graphical workflow editor, and individual workflow instances (sessions) can be submitted to multiple processing platforms, including a local laptop, the ICRAR Hyades cluster and on the [Setonix](https://pawsey.org.au/systems/setonix/) supercomputer at Pawsey. 
-- The workflow includes components to download the required data from [CASDA](https://research.csiro.au/casda/), prepare the ASKAPsoft configuration files (parameter files), launch the imager, continuum subtraction and primary beam correction for each of the beams of the footprints and then run the final mosaicing to combine the individual image cubes into a single output cube and the associated weight cube and upload those to Acacia.
-- The final upload location of the data products can be configured, depending on operational needs.
-- The main ASKAPsoft components ([imager](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/imager.html), [imcontsub](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/imcontsub.html) & [linmos](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/linmos.html)) are launched as Docker or Singularity containers, which are provided by the ASKAP software team or Pawsey.
-- In operations, this workflow will be controlled by another long-running workflow, which will poll CASDA for new observations in a configurable cadence (maybe once a day) and trigger the main imaging workflow once new data becomes available.
-- Here, two versions of the graph are implemented: test and deployment versions. Both versions were tested and benchmarked on the ICRAR Hyades cluster and on Setonix. 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/2f989202-a13f-4928-b897-5aa595a5fb54">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/1f545ee5-2ef3-4a50-adbf-df96e2acba27">
+  <img alt="" src="https://github.com/user-attachments/assets/1f545ee5-2ef3-4a50-adbf-df96e2acba27" />
+</picture>
 
-### Test and Deployment versions of the DAliuGE graph
-- The only difference between the test and deployment versions of the graph is that, in the test version, the imager, imcontsub, linmos, and mosaicking components are replaced with Python functions: imager(), imcontsub(), linmos(), and mosaic().
-- In the deployment version of the graph, imager, imcontsub, linmos, and mosaicking as ASKAPsoft components executed within a Docker container using the icrar/yanda_imager:0.4 image.
+> [`beampipe-core`](https://github.com/ICRAR/beampipe-core) is a modular orchestration and triggering framework for data-driven radio astronomy workflows. It operates as an external control plane that continuously monitors scientific archives (e.g. [CASDA](https://research.csiro.au/casda/)), determines when datasets are ready, and orchestrates scheduler-aware execution of distributed workflows (e.g. [DALiuGE](https://daliuge.readthedocs.io/)) on heterogeneous HPC systems.
 
-### Graphs Glossary
-#### Main graphs
-- [wallaby-hires_test-pipeline.graph](https://github.com/ICRAR/wallaby-hires/blob/main/dlg-graphs/wallaby-hires_test-pipeline.graph):
-     - latest test version of the pipeline (ASKAPsoft components replaced with test-python functions)
-- [wallaby-hires_test-pipeline-nodownloads.graph](https://github.com/ICRAR/wallaby-hires/blob/main/dlg-graphs/wallaby-hires_test-pipeline-nodownloads.graph):
-     - latest test version of the pipeline (ASKAPsoft components replaced with test-python functions)
-     - no-downloads to quickly test the intermediate functions
-- [wallaby-hires_deploy-pipeline.graph](https://github.com/ICRAR/wallaby-hires/blob/main/dlg-graphs/wallaby-hires_deploy-pipeline.graph):
-     - latest deployment version of the pipeline 
+This repository holds the updated **WALLABY high-resolution imaging** [DALiuGE](https://daliuge.readthedocs.io/) workflow and the `wallaby_hires` Python components that build per-beam parsets, stage inputs, and drive [ASKAPsoft](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/pipelines/introduction.html) [**cimager**](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/cimager.html), [**imcontsub**](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/imcontsub.html), and [**linmos**](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/linmos.html) on platforms such as the ICRAR Hyades cluster and [Setonix](https://pawsey.org.au/systems/setonix/) at Pawsey.
 
-#### Other graphs: 
-- [imager.graph](https://github.com/ICRAR/wallaby-hires/blob/main/dlg-graphs/imager.graph): only the imager inside docker container 
-- [imager_singularity.graph](https://github.com/ICRAR/wallaby-hires/blob/main/dlg-graphs/imager_singularity.graph): only the imager inside singularity container  
+This is built on the work presented the original [wallaby-hires](https://github.com/jbwod/beampipe-wallaby/tree/main) pipeline.
 
-### Current workflow of the pipeline implemented as a DALiuGE graph
-**Inputs:** 
-1. Catalogue: Path to the CSV file containing HIPASS sources to be processed.
-2. Processed catalogue: Path to the CSV file with names of already processed sources.
-3. Credentials: Path to the CASDA credentials file.
-   
-**Processing steps:**
-1. Processes the input source catalogue: Checks for existing sources, identifies unprocessed sources, retrieves relevant data (RA, DEC, and Vsys), stages files for download, and saves the processed data in a specified CSV format containing the information: source name, RA, DEC, Vsys and evaluation_file_path. 
-2. Reads the CSV file: Returns a list of dictionaries from the processed file that contain the dynamic parsets corresponding to all the beams of the given HIPASS source.
-3. Combines parameter sets: Merges the static and dynamic parameter sets for all beams of each HIPASS source.
-4. Inputs for imaging stages: The complete parameter sets are supplied as inputs to the ASKAPsoft components: imager, imcontsub, and linmos.These components are launched inside Docker or Singularity containers on Hyades and Setonix, respectively. 
-6. Final step - mosaicking: When all the beams are processed, mosaicking is performed using the output files from the linmos stage. 
+<p align="center">
+  <img src="images/wallaby.png" alt="WALLABY hi-res" width="280" />
+</p>
+<p align="center">
+  <img src="images/mosica.png" alt="Mosaic step illustration" width="600" />
+</p>
 
-![Alt text](images/pipeline-test.png)
- - Link to the test graph: [Click here](https://eagle.icrar.org/?service=GitHub&repository=ICRAR/wallaby-hires&branch=main&path=dlg-graphs&filename=wallaby-hires_test-pipeline.graph)
+## What it does
+
+> - **`Manifest-driven ingestion`**: accepts a Beampipe execution manifest (staged MS tarballs, evaluation metadata, credentials) and turns it into a per-beam CSV plus download URL lists for the graph.
+
+> - **`Beam-scoped workspace layout`**: unpacks each MS under `{source}/{sbid}/{beamNN}/`, runs imaging in that working directory, and keeps evaluation primary-beam cubes under `{source}/{sbid}/eval/`.
+
+> - **`Dynamic parset generation`**: `process_CSV_str` emits per-row dictionaries (dataset path, field direction, `imcontsub` / `linmos` logical names, beam roots) that `parset_mixing` merges with static ASKAPsoft templates from the graph.
+
+> - **`ASKAPsoft imaging chain`**: per beam - **cimager** → **imcontsub** → **linmos** — then **mosaic** across beams for a source; final data products can be uploaded to S3/Acacia (destination configurable).
+
+> - **`Idempotent staging`**: checksum validation, common data-set, skips re-download and re-untar when files or the target `.ms` directory already exist, so retries and partial reruns are safe.
+
+> - **`Test and deploy graphs`**: `*-beampipe.graph` variants run ASKAPsoft in Singularity on Setonix; `*-test-*` graphs replace imager / imcontsub / linmos / mosaic with Python stubs for fast local or CI checks.
+
+## WALLABY hi-res imaging overview
+
+- One of the key data products for the full [WALLABY](https://wallaby-survey.org/) survey are the high-resolution **12 arcsec “postage stamps”** for a selected sub-sample of galaxies.
+- The sample includes a catalouge of HIPASS galaxies and additional targets chosen from optical properties likely to be well resolve.
+- Visibilities include the longest **6 km** baselines (highest achievable resolution) from calibrated, UV continuum-subtracted data produced by the default WALLABY ASKAPsoft imaging pipeline.
+- For each source, visibilities are split for up to **three neighbouring beams** (up to **six beams** per source across footprints).
+- Each beam uses **~250 channels** over the velocity range where the source is expected.
+- Each single-beam dataset is typically **~15 GB**; combined visibility data per source can reach **~90 GB**.
+- Split-out datasets per beam are published on [CASDA](https://research.csiro.au/casda/) for processing.
+
+## High-resolution products
+
+Comparison of **moment 0** and **moment 1** maps at **30″** and **12″** for two galaxies (top: HIPASS J0949-047b, bottom: HIPASS J1005-44b). Murugeshan C, Deg N, Westmeier T, et al. *WALLABY Pilot Survey: Public data release of ∼1800 H i sources and high-resolution cut-outs from Pilot Survey Phase 2.*
+
+<p align="center">
+  <img src="images/hires.png" alt="30 arcsec vs 12 arcsec moment maps for two WALLABY galaxies" width="900" />
+</p>
+
+Example **data products** produced by the now current `beampipe`-enhanced workflow:
+
+| Moment 0 | Moment 1 | Visualisation |
+| :--: | :--: | :--: |
+| <img src="images/0moment.png" alt="Moment 0 map example" width="280" /> | <img src="images/1moment.png" alt="Moment 1 map example" width="280" /> | <img src="images/visual.png" alt="Visualisation of hi-res cube products" width="280" /> |
+
+## WALLABY hi-res pipeline as a DALiuGE workflow
+
+The earlier hi-res path was a manually invoked script (not under version control) that mostly produced ASKAPsoft configuration files and SLURM jobs. The current pipeline is a **[DALiuGE](https://daliuge.readthedocs.io/)** workflow kept in this repository together with the Python components above.
+
+- Workflows are built and edited with the **[EAGLE](https://eagle-dlg.readthedocs.io/)** graphical editor; sessions can be submitted to a laptop, **Hyades**, or **Setonix**.
+- The graph downloads required data from **CASDA** (or consumes Beampipe-staged URLs), prepares ASKAPsoft parameter sets, runs **cimager**, **imcontsub**, and **linmos** per beam, then **mosaics** beam cubes into a single output and weight image.
+- Main ASKAPsoft steps run in **Docker** or **Singularity** containers (ASKAPsoft team / Pawsey images); on Setonix we use site Singularity (`askapsoft_1.23.0-mpich.sif`) with the beam directory bind-mounted.
+
+### Test and deployment graph versions
+
+| | **Test graphs** | **Deploy / Beampipe graphs** |
+|---|-----------------|------------------------------|
+| **imager / imcontsub / linmos / mosaic** | Python functions `imager()`, `imcontsub()`, `linmos()`, `mosaic()` | ASKAPsoft binaries in Singularity (production) |
+| **Downloads** | Optional `*-nodownloads-*` variants | Full manifest / CASDA staging |
+| **Typical use** | CI, logic checks, Hyades | Setonix production under Beampipe |
+
+Legacy deploy graphs used the `icrar/yanda_imager:0.4` Docker image; current **`*-beampipe.graph`** targets Pawsey Singularity and the layout described below.
+
+## Pipeline architecture
+
+> End-to-end, production ready flow under Beampipe: manifest ⮕ staging ⮕ scatter per beam ⮕ imager / imcontsub / linmos ⮕ mosaic.
+
+<p align="center">
+  <img src="images/new-graph.png" alt="WALLABY hi-res Beampipe DALiuGE graph" width="900" />
+</p>
+
+> Original un-modified Graph from wallaby-hires
+
+<p align="center">
+  <img src="images/pipeline-test.png" alt="OG pipeline graph (logical view)" width="700" />
+</p>
+
+**Per-beam imaging** — static cimager / imcontsub / linmos parsets from the graph are merged with dynamic keys from each CSV row (`parset_mixing`).
+
+<p align="center">
+  <img src="images/imager.png" alt="cimager, imcontsub, and linmos steps" width="700" />
+</p>
+
+### Inputs
+
+**Beampipe / manifest-driven runs**
+
+1. **Manifest** — staged MS and evaluation URLs, optional `credentials_ini_url`, per-source `source_identifier`, `sbid`, catalogue fields (`ra_string`, `dec_string`, `vsys`), evaluation tarball reference.
+
+**Classic legacy-driven runs** (legacy graphs)
+
+1. **Catalogue** — HIPASS sources to process.
+2. **Processed catalogue** — already processed sources.
+3. **Credentials** — CASDA credentials file.
+
+### Processing steps
+
+1. **Catalogue / manifest** — identify sources and beams; build or read a CSV with source name, RA, Dec, `Vsys`, and evaluation file path (`source_identifier`, `sbid` for Beampipe layout).
+2. **`download_data_ms` / `download_data_eval`** — fetch staged tarballs; untar MS into `…/{beamNN}/<name>.ms` (skip if the `.ms` directory already exists); extract evaluation primary-beam FITS under `…/eval/`.
+3. **`process_CSV_str`** — return a list of per-beam parset dictionaries (dynamic keys for cimager, imcontsub, linmos).
+4. **`parset_mixing`** — merge static and dynamic parameter sets for each tool prefix.
+5. **ASKAPsoft** — supply merged parsets to **cimager**, **imcontsub**, and **linmos** (Docker or Singularity per platform).
+6. **Mosaicking** — when all beams for a source are done, **`process_CSV_mosaic_str`** / **`mosaic`** combines linmos outputs into final mosaic cubes and weights.
+
+### FITS naming (dynamic parset)
+
+Logical names (no `.fits` suffix in parsets) follow current cimager / linmos behaviour:
+
+| Stage | Logical name pattern |
+|--------|----------------------|
+| Cimager image name | `image.<field_id>` |
+| Restored cube | `image.restored.<field_id>` |
+| After imcontsub | `image.restored.<field_id>.contsub` |
+| Linmos holographic output | `image.restored.<field_id>.contsub_holo` |
+| Linmos feed offset key | `linmos.feeds.image.restored.<field_id>.contsub` |
+
+`<field_id>` is the MS stem without `.ms` (e.g. `HIPASSJ1317-16_SB72962_F00_B14`).
+
+## DALiuGE graphs
+
+Graphs live under [`dlg-graphs/`](dlg-graphs/). **Prefer `*-beampipe.graph` for production Beampipe runs.**
+
+### Main graphs
+
+| Graph | Description |
+|--------|-------------|
+| [`wallaby-hires_deploy-pipeline-beampipe.graph`](dlg-graphs/wallaby-hires_deploy-pipeline-beampipe.graph) | Latest **Beampipe deploy** pipeline (ASKAPsoft via Singularity) |
+| [`wallaby-hires_deploy-setonix-beampipe.graph`](dlg-graphs/wallaby-hires_deploy-setonix-beampipe.graph) | Setonix-oriented Beampipe deploy variant |
+| [`wallaby-hires_test-pipeline-beampipe.graph`](dlg-graphs/wallaby-hires_test-pipeline-beampipe.graph) | Latest **test** graph (ASKAPsoft steps replaced with Python stubs) |
+| [`wallaby-hires_test-pipeline-nodownloads-beampipe.graph`](dlg-graphs/wallaby-hires_test-pipeline-nodownloads-beampipe.graph) | Test graph **without download** drops (quick intermediate checks) |
+| [`wallaby-hires_deploy-pipeline.graph`](dlg-graphs/wallaby-hires_deploy-pipeline.graph) | Legacy [DEPRECATED] |
+| [`wallaby-hires_test-pipeline.graph`](dlg-graphs/wallaby-hires_test-pipeline.graph) | Legacy test pipeline [DEPRECATED] |
+| [`wallaby-hires_test-pipeline-nodownloads.graph`](dlg-graphs/wallaby-hires_test-pipeline-nodownloads.graph) | Legacy test pipeline without downloads [DEPRECATED] |
+
+### Component graphs
+
+| Graph | Description |
+|--------|-------------|
+| [`imager.graph`](dlg-graphs/imager.graph) | Imager only (Docker) |
+| [`imager_singularity.graph`](dlg-graphs/imager_singularity.graph) | Imager only (Singularity) |
+| [`imcontsub.graph`](dlg-graphs/imcontsub.graph) | imcontsub only |
+| [`imager-parset.graph`](dlg-graphs/imager-parset.graph) | Imager / parset experiments |
+
+Both test and deploy variants have been exercised on local REST DIM and **Setonix**.
+
+## Python package (`wallaby_hires`)
+
+DALiuGE **PyFunc** entry points (see [`wallaby_hires/__init__.py`](wallaby_hires/__init__.py)):
+
+| Function | Purpose |
+|----------|---------|
+| `prestage_manifest_inputs` | Manifest to expected credentials path, CSV string, MS/eval URL JSON |
+| `download_data_ms` | Download and untar beam MS archives |
+| `download_data_eval` | Download and selectively extract evaluation / PB FITS |
+| `process_CSV_str` | CSV ⮕ list of per-beam parset dicts |
+| `parset_mixing` | Merge static and dynamic parsets to `key=value` text |
+| `extract_beam_root` | Resolve per-beam output directory for FileDROP |
+| `process_CSV_mosaic_str` | Mosaic-stage dynamic parsets |
+| `imager` / `imcontsub` / `linmos` / `mosaic` | graph stubs |
+
+Example manifest shape: [`wallaby_hires/test_staging_e2e_manifest.json`](wallaby_hires/test_staging_e2e_manifest.json).
 
 ## Installation
-There are multiple options for the installation, depending on how you intend to run the DALiuGE engine, directly in a virtual environment (host) or inside a docker container. You can also install it either from PyPI (the latest released version).
 
-## Install it from PyPI
+There are several installation options depending on whether the DALiuGE engine runs in a **virtual environment** on the host or inside a **Docker** container. You can install from **PyPI** (when released) or from a clone of this repository.
 
 ### Engine in a virtual environment
+
 ```bash
 pip install wallaby_hires
 ```
-This will only work after releasing the project to PyPi.
-### Engine in Docker container
+
+This requires a release on PyPI. From a clone:
+
+```bash
+pip install -e .
+```
+
+### Engine inside a DALiuGE container
+
 ```bash
 docker exec -t daliuge-engine bash -c 'pip install --prefix=$DLG_ROOT/code wallaby_hires'
 ```
 
+## Related links
+
+- [WALLABY survey](https://wallaby-survey.org/)
+- [ASKAPsoft imaging](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current/calim/cimager.html)
+- [DALiuGE documentation](https://daliuge.readthedocs.io/)
+- [CASDA](https://research.csiro.au/casda/)
+
+## License
+
+See [LICENSE](LICENSE).

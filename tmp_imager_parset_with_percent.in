@@ -1,0 +1,9 @@
+Cimager.dataset="/does/not/exist.ms"
+Cimager.Images.Names=[image.test]
+Cimager.Images.direction=[13h18m58.9s,-21.2.1.0, J2000]
+Cimager.imagetype=fits
+Cimager.Images.shape=[384,384]
+Cimager.Images.cellsize=[2arcsec,2arcsec]
+Cimager.threshold.minorcycle=[45%, 3.5mJy, 0.5mJy]
+Cimager.threshold.majorcycle=0.5mJy
+Cimager.ncycles=1

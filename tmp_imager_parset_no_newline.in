@@ -1,0 +1,21 @@
+Cimager.dataset="/does/not/exist.ms"
+p="2026-04-26T09_02_12_20_0-0"
+
+python3 - <<'PY'
+p="2026-04-26T09_02_12_20_0-0"
+data=open(p,"rb").read()
+
+# Find suspicious bytes: NUL, other control chars (excluding tab/lf/cr), or non-UTF8.
+bad=[]
+for i,b in enumerate(data):
+    if b in (9,10,13):  # ok: \t \n \r
+        continue
+    if b < 32 or b == 127:
+        bad.append((i,b))
+        if len(bad) >= 30:
+            break
+
+print("size:", len(data))
+print("first_bad_bytes(offset,byte):", bad[:10])
+print("has_NUL:", b"\x00" in data)
+PY
