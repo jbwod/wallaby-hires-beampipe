@@ -1,62 +1,121 @@
-# __main__ is not required for DALiuGE components.
-import argparse  # pragma: no cover
+"""Command-line tools for validating manifests and WALLABY output evidence."""
 
-# from . import parset_mixin  # pragma: no cover
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from importlib.resources import files
+from pathlib import Path
+from typing import Sequence
+
+from .funcs import validate_manifest
+from .outputs import (
+    OutputValidationError,
+    build_output_inventory,
+    publish_output_inventory,
+    verify_output_inventory,
+)
 
 
-def main() -> None:  # pragma: no cover
-    """
-    The main function executes on commands:
-    `python -m wallaby_hires` and `$ wallaby_hires `.
+def package_version() -> str:
+    return (
+        files("wallaby_hires")
+        .joinpath("VERSION")
+        .read_text(encoding="utf-8")
+        .strip()
+        .lstrip("v")
+    )
 
-    This is your program's entry point.
 
-    You can change this function to do whatever you want.
-    Examples:
-        * Run a test suite
-        * Run a server
-        * Do some other stuff
-        * Run a command line application (Click, Typer, ArgParse)
-        * List all available tasks
-        * Run an application (Flask, FastAPI, Django, etc.)
-    """
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="wallaby_hires.",
-        epilog="Enjoy the wallaby_hires functionality!",
-    )
-    # This is required positional argument
-    parser.add_argument(
-        "name",
-        type=str,
-        help="The username",
-        default="ICRAR",
-    )
-    # This is optional named argument
-    parser.add_argument(
-        "-m",
-        "--message",
-        type=str,
-        help="The Message",
-        default="Hello",
-        required=False,
+        prog="wallaby_hires",
+        description="Validate WALLABY Beampipe inputs and output evidence.",
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Optionally adds verbosity",
+        "--version", action="version", version=f"%(prog)s {package_version()}"
     )
-    args = parser.parse_args()
-    print(f"{args.message} {args.name}!")
-    if args.verbose:
-        print("Verbose mode is on.")
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    print("Executing main function")
-    # d0 = {"a": {"value": 1}, "b": {"value": 2}}
-    # d1 = {"a": "Hello", "b": "World"}
-    # print(parset_mixin(d0, d1))
-    print("End of main function")
+    validate = commands.add_parser(
+        "validate-manifest", help="validate a manifest JSON file"
+    )
+    validate.add_argument("manifest", type=Path)
+
+    inventory = commands.add_parser(
+        "inventory-outputs", help="validate final products and write SHA-256 evidence"
+    )
+    inventory.add_argument("output_root", type=Path)
+    inventory.add_argument(
+        "--inventory",
+        type=Path,
+        help="output JSON path (default: OUTPUT_ROOT/wallaby-output-inventory.json)",
+    )
+    inventory.add_argument(
+        "--pattern",
+        action="append",
+        dest="patterns",
+        help="required glob; repeat for multiple product classes",
+    )
+
+    verify = commands.add_parser("verify-inventory", help="re-hash an output inventory")
+    verify.add_argument("output_root", type=Path)
+    verify.add_argument("inventory", type=Path)
+
+    publish = commands.add_parser(
+        "publish-local", help="publish verified outputs to a mounted filesystem"
+    )
+    publish.add_argument("source_root", type=Path)
+    publish.add_argument("inventory", type=Path)
+    publish.add_argument("destination_root", type=Path)
+    return parser
 
 
-if __name__ == "__main__":  # pragma: no cover
-    main()
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _parser()
+    arguments = parser.parse_args(argv)
+    try:
+        if arguments.command == "validate-manifest":
+            with arguments.manifest.open("r", encoding="utf-8") as stream:
+                manifest = json.load(stream)
+            validate_manifest(manifest)
+            summary = {
+                "valid": True,
+                "sources": len(manifest.get("sources") or []),
+            }
+            print(json.dumps(summary, sort_keys=True))
+        elif arguments.command == "inventory-outputs":
+            inventory_path = arguments.inventory or (
+                arguments.output_root / "wallaby-output-inventory.json"
+            )
+            patterns = tuple(arguments.patterns) if arguments.patterns else None
+            kwargs = {"inventory_path": inventory_path}
+            if patterns is not None:
+                kwargs["patterns"] = patterns
+            document = build_output_inventory(arguments.output_root, **kwargs)
+            print(json.dumps(document, sort_keys=True))
+        elif arguments.command == "verify-inventory":
+            document = verify_output_inventory(arguments.output_root, arguments.inventory)
+            print(json.dumps(document, sort_keys=True))
+        elif arguments.command == "publish-local":
+            document = publish_output_inventory(
+                arguments.source_root,
+                arguments.destination_root,
+                arguments.inventory,
+            )
+            print(json.dumps(document, sort_keys=True))
+        else:  # pragma: no cover - argparse requires one of the commands
+            parser.error("a command is required")
+    except (OSError, ValueError, OutputValidationError) as error:
+        print(f"wallaby_hires: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def entrypoint() -> None:
+    raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    entrypoint()

@@ -19,7 +19,7 @@ This is built on the work presented the original [wallaby-hires](https://github.
 
 > - **`Dynamic parset generation`**: `process_CSV_str` emits per-row dictionaries (dataset path, field direction, `imcontsub` / `linmos` logical names, beam roots) that `parset_mixing` merges with static ASKAPsoft templates from the graph.
 
-> - **`ASKAPsoft imaging chain`**: per beam - **cimager** → **imcontsub** → **linmos** — then **mosaic** across beams for a source; final data products can be uploaded to S3/Acacia (destination configurable).
+> - **`ASKAPsoft imaging chain`**: per beam - **cimager** → **imcontsub** → **linmos** — then **mosaic** across beams for a source. Final products can be inventoried with SHA-256 evidence and atomically published to a configured durable filesystem.
 
 > - **`Idempotent staging`**: checksum validation, common data-set, skips re-download and re-untar when files or the target `.ms` directory already exist, so retries and partial reruns are safe.
 
@@ -162,9 +162,13 @@ DALiuGE **PyFunc** entry points (see [`wallaby_hires/__init__.py`](wallaby_hires
 | `parset_mixing` | Merge static and dynamic parsets to `key=value` text |
 | `extract_beam_root` | Resolve per-beam output directory for FileDROP |
 | `process_CSV_mosaic_str` | Mosaic-stage dynamic parsets |
+| `verify_output_products` | Require non-empty image/weights products and emit SHA-256 evidence |
 | `imager` / `imcontsub` / `linmos` / `mosaic` | graph stubs |
 
 Example manifest shape: [`wallaby_hires/test_staging_e2e_manifest.json`](wallaby_hires/test_staging_e2e_manifest.json).
+
+Output verification and the remaining production publisher/Core integration are
+documented in [`docs/output-integrity.md`](docs/output-integrity.md).
 
 ## Installation
 

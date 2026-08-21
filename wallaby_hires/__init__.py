@@ -23,6 +23,13 @@ from .funcs import (
     untar_file,
     validate_manifest,
 )
+from .outputs import (
+    OutputValidationError,
+    build_output_inventory,
+    publish_output_inventory,
+    verify_output_inventory,
+    verify_output_products,
+)
 
 __all__ = [
     "ManifestDownloadError",
@@ -44,4 +51,9 @@ __all__ = [
     "untar_file",
     "validate_manifest",
     "extract_beam_root",
+    "OutputValidationError",
+    "build_output_inventory",
+    "publish_output_inventory",
+    "verify_output_inventory",
+    "verify_output_products",
 ]
