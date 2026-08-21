@@ -1,49 +1,43 @@
-name: Upload Python Package
+name: Release Python package
 
 on:
   push:
-    # Sequence of patterns matched against refs/tags
-    tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
-
-  # Allows you to run this workflow manually from the Actions tab
+    tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
 
 jobs:
   release:
-    name: Create Release
     runs-on: ubuntu-latest
+    environment: pypi
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
-          # by default, it uses a depth of 1
-          # this fetches all history so that we can read each commit
           fetch-depth: 0
-      - name: Generate Changelog
-        run: .github/release_message.sh > release_message.md
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - uses: actions/setup-python@v5
         with:
-          body_path: release_message.md
-
-  deploy:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - name: Set up Python
-      uses: actions/setup-python@v1
-      with:
-        python-version: '3.x'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install setuptools wheel
-    - name: Build and publish
-      run: |
-        python setup.py sdist bdist_wheel
-    - name: Publish distribution 📦 to PyPI
-      if: startsWith(github.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@master
-      with:
-        password: ${{ secrets.PYPI }}
+          python-version: "3.12"
+          cache: pip
+      - name: Require the tag and package versions to match
+        run: |
+          python scripts/version.py --check
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            python scripts/version.py --check --tag "${GITHUB_REF_NAME}"
+          fi
+      - name: Build and validate distributions
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Publish to PyPI with trusted publishing
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

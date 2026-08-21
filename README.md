@@ -174,6 +174,9 @@ documented in [`docs/output-integrity.md`](docs/output-integrity.md).
 
 There are several installation options depending on whether the DALiuGE engine runs in a **virtual environment** on the host or inside a **Docker** container. You can install from **PyPI** (when released) or from a clone of this repository.
 
+Python 3.10 through 3.13 is supported. The repository `Makefile` uses ordinary
+PEP 517/pip commands; Poetry is not required by a DALiuGE runtime installation.
+
 ### Engine in a virtual environment
 
 ```bash
@@ -183,13 +186,25 @@ pip install wallaby_hires
 This requires a release on PyPI. From a clone:
 
 ```bash
-pip install -e .
+make install
 ```
+
+`make install` deliberately force-reinstalls the built package so `/daliuge`
+runtime setup cannot retain an older editable checkout or wheel. Contributors can
+use `make install-dev` and `make check` for the full lint/test/build gate.
 
 ### Engine inside a DALiuGE container
 
 ```bash
 docker exec -t daliuge-engine bash -c 'pip install --prefix=$DLG_ROOT/code wallaby_hires'
+```
+
+The repository `Containerfile` builds a Python 3.10 utility image whose entrypoint
+is the validation CLI. It does not replace the DALiuGE engine:
+
+```bash
+docker build -f Containerfile -t wallaby-hires:0.1.5 .
+docker run --rm wallaby-hires:0.1.5 --version
 ```
 
 ## Related links

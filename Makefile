@@ -1,122 +1,69 @@
-.ONESHELL:
-ENV_PREFIX=$(shell python -c "if __import__('pathlib').Path('.venv/bin/pip').exists(): print('.venv/bin/')")
-USING_POETRY=$(shell grep "tool.poetry" pyproject.toml && echo "yes")
+PYTHON ?= python3
 
 .PHONY: help
-help:             ## Show the help.
-	@echo "Usage: make <target>"
-	@echo ""
-	@echo "Targets:"
-	@fgrep "##" Makefile | fgrep -v fgrep
-
+help: ## Show available targets.
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: show
-show:             ## Show the current environment.
-	@echo "Current environment:"
-	@if [ "$(USING_POETRY)" ]; then poetry env info && exit; fi
-	@echo "Running using $(ENV_PREFIX)"
-	@$(ENV_PREFIX)python -V
-	@$(ENV_PREFIX)python -m site
+show: ## Show the Python and package versions.
+	@$(PYTHON) --version
+	@$(PYTHON) -m wallaby_hires --version 2>/dev/null || true
 
 .PHONY: install
-install:          ## Install the project in dev mode.
-	@if [ "$(USING_POETRY)" ]; then poetry install && exit; fi
-	@echo "Don't forget to run 'make virtualenv' if you got errors."
-	$(ENV_PREFIX)pip install -e .[test]
+install: ## Build and force-reinstall the package (used by the DALiuGE runtime).
+	$(PYTHON) -m pip install --disable-pip-version-check --force-reinstall --no-deps .
+
+.PHONY: install-dev
+install-dev: ## Install the package and development/test tooling.
+	$(PYTHON) -m pip install --disable-pip-version-check -e .
+	$(PYTHON) -m pip install --disable-pip-version-check \
+		black build coverage flake8 isort mypy pytest pytest-cov twine types-requests
 
 .PHONY: fmt
-fmt:              ## Format code using black & isort.
-	$(ENV_PREFIX)isort wallaby_hires/
-	$(ENV_PREFIX)black -l 90 wallaby_hires/
-	$(ENV_PREFIX)black -l 90 tests/
+fmt: ## Format Python source and tests.
+	$(PYTHON) -m isort wallaby_hires tests scripts
+	$(PYTHON) -m black wallaby_hires tests scripts
 
 .PHONY: lint
-lint:             ## Run pep8, black, mypy linters.
-	$(ENV_PREFIX)flake8 --max-line-length 90 --ignore E203 wallaby_hires/
-	$(ENV_PREFIX)black -l 90 --check wallaby_hires/
-	$(ENV_PREFIX)black -l 90 --check tests/
-	$(ENV_PREFIX)mypy --ignore-missing-imports wallaby_hires/
+lint: ## Run formatting, style, and type checks.
+	$(PYTHON) -m flake8 --max-line-length 90 --extend-ignore E203,E501,W503 \
+		wallaby_hires tests scripts
+	$(PYTHON) -m black --check wallaby_hires tests scripts
+	$(PYTHON) -m isort --check-only wallaby_hires tests scripts
+	$(PYTHON) -m mypy wallaby_hires
 
 .PHONY: test
-test: lint        ## Run tests and generate coverage report.
-	$(ENV_PREFIX)pytest -v --cov-config .coveragerc --cov=wallaby_hires -l --tb=short --maxfail=1 tests/
-	$(ENV_PREFIX)coverage xml
-	$(ENV_PREFIX)coverage html
+test: ## Run assertion-based tests with coverage.
+	$(PYTHON) -m pytest -v --cov=wallaby_hires --cov-report=term-missing tests
 
-.PHONY: watch
-watch:            ## Run tests on every change.
-	ls **/**.py | entr $(ENV_PREFIX)pytest -s -vvv -l --tb=long --maxfail=1 tests/
+.PHONY: build
+build: ## Build source and wheel distributions using PEP 517.
+	$(PYTHON) -m build
+
+.PHONY: check-dist
+check-dist: build ## Validate built distribution metadata.
+	$(PYTHON) -m twine check dist/*
+
+.PHONY: check
+check: lint test check-dist ## Run the complete local release gate.
 
 .PHONY: clean
-clean:            ## Clean unused files.
-	@find ./ -name '*.pyc' -exec rm -f {} \;
-	@find ./ -name '__pycache__' -exec rm -rf {} \;
-	@find ./ -name 'Thumbs.db' -exec rm -f {} \;
-	@find ./ -name '*~' -exec rm -f {} \;
-	@rm -rf .cache
-	@rm -rf .pytest_cache
-	@rm -rf .mypy_cache
-	@rm -rf build
-	@rm -rf dist
-	@rm -rf *.egg-info
-	@rm -rf htmlcov
-	@rm -rf .tox/
-	@rm -rf docs/_build
-
-.PHONY: virtualenv
-virtualenv:       ## Create a virtual environment.
-	@if [ "$(USING_POETRY)" ]; then poetry install && exit; fi
-	@echo "creating virtualenv ..."
-	@rm -rf .venv
-	@python3 -m venv .venv
-	@./.venv/bin/pip install -U pip
-	@./.venv/bin/pip install -e .[test]
-	@echo
-	@echo "!!! Please run 'source .venv/bin/activate' to enable the environment !!!"
+clean: ## Remove generated development and distribution files.
+	@find . -name '*.pyc' -delete
+	@find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+	@rm -rf .coverage .pytest_cache .mypy_cache build dist htmlcov
+	@rm -rf wallaby_hires.egg-info
 
 .PHONY: release
-release:          ## Create a new tag for release.
-	@echo "WARNING: This operation will create s version tag and push to github"
-	@read -p "Version? (provide the next x.y.z semver) : " TAG
-	@echo "v$${TAG}" > wallaby_hires/VERSION
-	@$(ENV_PREFIX)gitchangelog > HISTORY.md
-	@git add wallaby_hires/VERSION HISTORY.md
-	@git commit -m "release: version v$${TAG} 🚀"
-	@echo "creating git tag : v$${TAG}"
-	@git tag v$${TAG}
-	@git push -u origin HEAD --tags
-	@echo "Github Actions will detect the new tag and release the new version."
+release: ## Set one version, commit it, tag it, and push the release.
+	@read -r -p "Version (x.y.z): " TAG; \
+	$(PYTHON) scripts/version.py --set "$$TAG"; \
+	poetry lock; \
+	git add pyproject.toml poetry.lock wallaby_hires/VERSION; \
+	git commit -m "release: wallaby-hires v$$TAG"; \
+	git tag "v$$TAG"; \
+	git push origin HEAD --tags
 
 .PHONY: docs
-docs:             ## Build the documentation.
-	@echo "building documentation ..."
-	@$(ENV_PREFIX)mkdocs build
-	URL="site/index.html"; xdg-open $$URL || sensible-browser $$URL || x-www-browser $$URL || gnome-open $$URL
-
-.PHONY: switch-to-poetry
-switch-to-poetry: ## Switch to poetry package manager.
-	@echo "Switching to poetry ..."
-	@if ! poetry --version > /dev/null; then echo 'poetry is required, install from https://python-poetry.org/'; exit 1; fi
-	@rm -rf .venv
-	@poetry init --no-interaction --name=a_flask_test --author=ICRAR
-	@echo "" >> pyproject.toml
-	@echo "[tool.poetry.scripts]" >> pyproject.toml
-	@echo "wallaby_hires = 'wallaby_hires.__main__:main'" >> pyproject.toml
-	@cat requirements.txt | while read in; do poetry add --no-interaction "$${in}"; done
-	@cat requirements-test.txt | while read in; do poetry add --no-interaction "$${in}" --dev; done
-	@poetry install --no-interaction
-	@mkdir -p .github/backup
-	@mv requirements* .github/backup
-	@mv setup.py .github/backup
-	@echo "You have switched to https://python-poetry.org/ package manager."
-	@echo "Please run 'poetry shell' or 'poetry run wallaby_hires'"
-
-.PHONY: init
-init:             ## Initialize the project based on an application template.
-	@./.github/init.sh
-
-
-# This project has been generated from ICRAR/daliuge-component-template
-# __author__ = 'ICRAR'
-# __repo__ = https://github.com/ICRAR/daliuge-component-template
-# __sponsor__ = https://github.com/sponsors/ICRAR/
+docs: ## Build documentation without opening a GUI.
+	$(PYTHON) -m mkdocs build --strict

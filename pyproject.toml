@@ -1,25 +1,56 @@
-[tool.poetry]
+[project]
 name = "wallaby-hires"
-version = "0.1.0"
-description = ""
-authors = ["awicenec", "gayatri"]
+version = "0.1.5"
+description = "DALiuGE components for the Beampipe WALLABY high-resolution imaging workflow"
+authors = [{ name = "ICRAR and WALLABY contributors" }]
 readme = "README.md"
-packages = []
+license = "MIT"
+requires-python = ">=3.10,<3.14"
+dependencies = []
 
-[tool.poetry.dependencies]
-python = "^3.10"
-flake8 = "^7.0.0"
-black = "^24.4.2"
-mypy = "^1.10.0"
-types-requests = "^2.32.0.20250515"
+[project.scripts]
+wallaby_hires = "wallaby_hires.__main__:entrypoint"
+
+[tool.poetry]
+packages = [{ include = "wallaby_hires" }]
+include = ["wallaby_hires/VERSION"]
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+build = "^1.2.2"
 coverage = "^7.8.0"
+flake8 = "^7.1.1"
+isort = "^5.13.2"
+mkdocs = "^1.6.1"
+mypy = "^1.14.1"
 pytest = "^8.3.5"
 pytest-cov = "^6.1.1"
-
+twine = "^6.1.0"
+types-requests = "^2.32.0.20250515"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.scripts]
-wallaby_hires = 'wallaby_hires.__main__:main'
+[tool.black]
+line-length = 90
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 90
+
+[tool.mypy]
+ignore_missing_imports = true
+python_version = "3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+branch = true
+source = ["wallaby_hires"]
+
+[tool.coverage.report]
+show_missing = true
