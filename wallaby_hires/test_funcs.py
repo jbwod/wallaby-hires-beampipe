@@ -4,18 +4,17 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from wallaby_hires.funcs import (
-    _flatten_sources_to_dataset_rows,
     _build_csv_string_from_dataset_rows,
+    _flatten_sources_to_dataset_rows,
     prestage_manifest_inputs,
-    process_CSV_str,
     process_CSV_mosaic_str,
+    process_CSV_str,
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_MANIFEST = os.path.join(SCRIPT_DIR, "test_staging_e2e_manifest.json")
+
 
 def main():
     manifest_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_MANIFEST
@@ -32,7 +31,9 @@ def main():
     # 1. _flatten_sources_to_dataset_rows
     print("Rows from _flatten_sources_to_dataset_rows:")
     rows = _flatten_sources_to_dataset_rows(manifest)
-    print(json.dumps(rows, indent=2)[:2000])  # Print only first 2000 chars to avoid huge output
+    print(
+        json.dumps(rows, indent=2)[:2000]
+    )  # Print only first 2000 chars to avoid huge output
 
     # 2. _build_csv_string_from_dataset_rows
     print("\nCSV string from _build_csv_string_from_dataset_rows:")
@@ -45,11 +46,19 @@ def main():
 
     # 3. prestage_manifest_inputs
     print("\nResult of prestage_manifest_inputs:")
-    cred_path, csv_str, ms_urls_json, eval_urls_json = prestage_manifest_inputs(manifest_bytes)
+    cred_path, csv_str, ms_urls_json, eval_urls_json = prestage_manifest_inputs(
+        manifest_bytes
+    )
     print("credentials_path:", cred_path)
     print("csv_str preview:", repr(csv_str[:200]) + ("..." if len(csv_str) > 200 else ""))
-    print("ms_urls_json preview:", repr(ms_urls_json[:200]) + ("..." if len(ms_urls_json) > 200 else ""))
-    print("eval_urls_json preview:", repr(eval_urls_json[:200]) + ("..." if len(eval_urls_json) > 200 else ""))
+    print(
+        "ms_urls_json preview:",
+        repr(ms_urls_json[:200]) + ("..." if len(ms_urls_json) > 200 else ""),
+    )
+    print(
+        "eval_urls_json preview:",
+        repr(eval_urls_json[:200]) + ("..." if len(eval_urls_json) > 200 else ""),
+    )
 
     # 4. process_CSV_str
     print("\nprocess_CSV_str first result(s):")
@@ -66,6 +75,7 @@ def main():
         print(json.dumps(p, indent=2))
     if len(mosaic_parsets) > 2:
         print(f"... ({len(mosaic_parsets) - 2} more mosaic parsets)")
+
 
 if __name__ == "__main__":
     main()

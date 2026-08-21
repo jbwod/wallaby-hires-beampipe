@@ -14,15 +14,18 @@ import glob
 import hashlib
 import io
 import json
-import pickle
-from typing import Callable, Optional
 
 # Importing required modules
 import os
+import pickle
 import re
+import shutil
 import tarfile
+import tempfile
 import urllib
 import urllib.request
+from pathlib import Path, PurePosixPath
+from typing import Callable, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -35,6 +38,106 @@ class ManifestDownloadError(RuntimeError):
     Raised when a manifest-URL download fails (HTTP error, timeout, incomplete file).
     Propagates to DALiuGE so the run is marked failed for tracking.
     """
+
+
+class ManifestValidationError(ValueError):
+    """Raised when a Beampipe execution manifest is unsafe or incomplete."""
+
+
+_SAFE_PATH_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$")
+
+
+def _redact_url(url: str) -> str:
+    """Return a URL safe for logs by removing credentials, query, and fragment."""
+    try:
+        parsed = urlparse(str(url))
+    except Exception:
+        return "<invalid-url>"
+    if not parsed.scheme or not parsed.netloc:
+        return "<invalid-url>"
+    host = parsed.hostname or "<redacted-host>"
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return parsed._replace(netloc=host, query="", fragment="").geturl()
+
+
+def _safe_path_segment(value: object, field_name: str) -> str:
+    """Validate an identifier before it is used as one filesystem component."""
+    segment = str(value or "").strip()
+    if not _SAFE_PATH_SEGMENT.fullmatch(segment) or segment in {".", ".."}:
+        raise ManifestValidationError(
+            f"{field_name} must be a single portable path segment"
+        )
+    return segment
+
+
+def _safe_download_filename(value: object, field_name: str = "filename") -> str:
+    """Reject absolute, traversal, drive-qualified, and control-character names."""
+    filename = unquote(str(value or "")).strip()
+    normalized = filename.replace("\\", "/")
+    parts = PurePosixPath(normalized).parts
+    if (
+        not filename
+        or normalized.startswith("/")
+        or len(parts) != 1
+        or parts[0] in {".", ".."}
+        or re.match(r"^[A-Za-z]:", normalized)
+        or any(ord(char) < 32 or ord(char) == 127 for char in filename)
+    ):
+        raise ManifestValidationError(
+            f"{field_name} must be a safe basename without path components"
+        )
+    return filename
+
+
+def _safe_join(root: str, *segments: str) -> str:
+    """Join already validated segments and prove the result remains below root."""
+    root_path = os.path.abspath(root)
+    candidate = os.path.abspath(os.path.join(root_path, *segments))
+    if os.path.commonpath([root_path, candidate]) != root_path:
+        raise ManifestValidationError("resolved path escapes the staging root")
+    return candidate
+
+
+def _validate_remote_url(value: object, field_name: str, required: bool = True) -> str:
+    url = str(value or "").strip()
+    if not url and not required:
+        return ""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ManifestValidationError(f"{field_name} must be an HTTP(S) URL")
+    return url
+
+
+def _filename_from_url(url: str) -> str:
+    """Resolve a safe filename from a URL without opening the remote resource."""
+    parsed = urlparse(url)
+    for value in parse_qs(parsed.query).get("response-content-disposition", []):
+        match = re.search(r"filename\*?=(?:UTF-8''|\")?([^\";]+)", value, re.I)
+        if match:
+            return _safe_download_filename(match.group(1), "URL filename")
+    return _safe_download_filename(
+        os.path.basename(parsed.path.rstrip("/")) or "download", "URL filename"
+    )
+
+
+def _atomic_write_bytes(path: str, data: bytes) -> None:
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    handle, temporary_path = tempfile.mkstemp(prefix=".beampipe-", dir=directory)
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+    except Exception:
+        try:
+            os.unlink(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
+
 
 def _select_primary_beam_cube_fits_in_directory(
     dirpath: str, filename_hint: str = ""
@@ -88,9 +191,7 @@ def _unwrap_dlg_port_layer(value):
     elif isinstance(value, bytearray):
         value = bytes(value)
     elif not isinstance(value, bytes):
-        raise TypeError(
-            f"expected str, tuple, or buffer, got {type(value).__name__}"
-        )
+        raise TypeError(f"expected str, tuple, or buffer, got {type(value).__name__}")
     if len(value) >= 2 and value[0] == 0x80:
         return pickle.loads(value)
     return value.decode("utf-8")
@@ -125,16 +226,12 @@ def _normalize_dlg_csv_string(csv_string) -> str:
     if isinstance(obj, str):
         return obj
     if isinstance(obj, tuple):
-        if (
-            len(obj) == 4
-            and isinstance(obj[0], str)
-            and isinstance(obj[1], str)
-        ):
+        if len(obj) == 4 and isinstance(obj[0], str) and isinstance(obj[1], str):
             return obj[1]
         raise TypeError(
-            "csv_string out prestage_manifest_inputs, "
-            f"got length {len(obj)}"
+            "csv_string out prestage_manifest_inputs, " f"got length {len(obj)}"
         )
+    raise TypeError(f"csv_string must decode to str or tuple, got {type(obj).__name__}")
 
 
 def _normalize_urls_json_arg(value, tuple_index: int) -> str:
@@ -156,14 +253,19 @@ def _normalize_urls_json_arg(value, tuple_index: int) -> str:
             "Expected prestage 4-tuple (credentials, csv, ms_urls_json, eval_urls_json) "
             f"or a JSON str; got tuple of length {len(obj)}"
         )
+    raise TypeError(f"URL input must decode to str or tuple, got {type(obj).__name__}")
 
 
 def _download_url_to_path(url: str, path: str, timeout: int = 300) -> None:
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        with open(path, "wb") as f:
-            f.write(r.read())
-    print(f"Downloaded {url} -> {path}")
+    safe_url = _validate_remote_url(url, "download URL")
+    try:
+        with urllib.request.urlopen(safe_url, timeout=timeout) as response:
+            _atomic_write_bytes(path, response.read())
+    except (HTTPError, URLError, TimeoutError) as error:
+        raise ManifestDownloadError(
+            f"Unable to download {_redact_url(safe_url)} ({type(error).__name__})"
+        ) from None
+    print(f"Downloaded {_redact_url(safe_url)} -> {path}")
 
 
 def _write_text_atomic(path: str, text: str) -> None:
@@ -174,21 +276,36 @@ def _write_text_atomic(path: str, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _fetch_checksum_to_workspace(checksum_url: str, timeout: int = 300) -> tuple[str, str]:
+def _fetch_checksum_to_workspace(
+    checksum_url: str, timeout: int = 300
+) -> tuple[str, str]:
     """
     Download checksum text into the current workspace and return
     (expected_hex, checksum_file_path). If checksum_url is empty, returns ("","").
     """
     if not checksum_url or not str(checksum_url).strip():
         return "", ""
+    checksum_url = _validate_remote_url(checksum_url, "checksum URL")
     parsed = urlparse(checksum_url)
-    name = os.path.basename(parsed.path) or "download.checksum"
+    name = _safe_download_filename(
+        os.path.basename(parsed.path) or "download.checksum", "checksum filename"
+    )
     local_path = os.path.join(os.getcwd(), CHECKSUMS_DIR, name)
-    with urllib.request.urlopen(checksum_url, timeout=timeout) as r:
-        content = r.read().decode("utf-8", errors="replace").strip()
+    try:
+        with urllib.request.urlopen(checksum_url, timeout=timeout) as response:
+            content = response.read().decode("utf-8", errors="replace").strip()
+    except (HTTPError, URLError, TimeoutError) as error:
+        raise ManifestDownloadError(
+            f"Unable to download checksum {_redact_url(checksum_url)} "
+            f"({type(error).__name__})"
+        ) from None
     _write_text_atomic(local_path, content + "\n")
     parts = content.split()
     expected = (parts[0] if parts else "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{32}", expected):
+        raise ManifestDownloadError(
+            f"Invalid MD5 checksum returned by {_redact_url(checksum_url)}"
+        )
     return expected, local_path
 
 
@@ -227,6 +344,77 @@ def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
         return staging_root
     return os.environ.get("WALLABY_HIRES_STAGING_ROOT", "").strip()
 
+
+def validate_manifest(manifest: dict) -> dict:
+    """
+    Validate the nested Beampipe manifest consumed by the staging graph.
+
+    Legacy manifests without ``sources`` remain supported by
+    :func:`prestage_manifest_inputs`. Once ``sources`` is present, malformed rows
+    fail admission instead of being silently discarded.
+    """
+    if not isinstance(manifest, dict):
+        raise ManifestValidationError("manifest must be a JSON object")
+
+    sources = manifest.get("sources")
+    if sources is None:
+        return manifest
+    if not isinstance(sources, list) or not sources:
+        raise ManifestValidationError("sources must be a non-empty array")
+
+    for source_index, source in enumerate(sources):
+        prefix = f"sources[{source_index}]"
+        if not isinstance(source, dict):
+            raise ManifestValidationError(f"{prefix} must be an object")
+        _safe_path_segment(source.get("source_identifier"), f"{prefix}.source_identifier")
+        for required_field in ("ra_string", "dec_string"):
+            if not str(source.get(required_field) or "").strip():
+                raise ManifestValidationError(f"{prefix}.{required_field} is required")
+        vsys = source.get("vsys")
+        if isinstance(vsys, bool) or not isinstance(vsys, (int, float)):
+            raise ManifestValidationError(f"{prefix}.vsys must be a number")
+
+        sbids = source.get("sbids")
+        if not isinstance(sbids, list) or not sbids:
+            raise ManifestValidationError(f"{prefix}.sbids must be a non-empty array")
+        for sbid_index, sbid_group in enumerate(sbids):
+            sbid_prefix = f"{prefix}.sbids[{sbid_index}]"
+            if not isinstance(sbid_group, dict):
+                raise ManifestValidationError(f"{sbid_prefix} must be an object")
+            _safe_path_segment(sbid_group.get("sbid"), f"{sbid_prefix}.sbid")
+            evaluation_file = sbid_group.get("evaluation_file")
+            evaluation_url = sbid_group.get("evaluation_file_url")
+            if evaluation_file:
+                _safe_download_filename(evaluation_file, f"{sbid_prefix}.evaluation_file")
+            if evaluation_url:
+                _validate_remote_url(evaluation_url, f"{sbid_prefix}.evaluation_file_url")
+            checksum_url = sbid_group.get("evaluation_file_checksum_url")
+            if checksum_url:
+                _validate_remote_url(
+                    checksum_url, f"{sbid_prefix}.evaluation_file_checksum_url"
+                )
+
+            datasets = sbid_group.get("datasets")
+            if not isinstance(datasets, list) or not datasets:
+                raise ManifestValidationError(
+                    f"{sbid_prefix}.datasets must be a non-empty array"
+                )
+            for dataset_index, dataset in enumerate(datasets):
+                dataset_prefix = f"{sbid_prefix}.datasets[{dataset_index}]"
+                if not isinstance(dataset, dict):
+                    raise ManifestValidationError(f"{dataset_prefix} must be an object")
+                _safe_download_filename(dataset.get("name"), f"{dataset_prefix}.name")
+                _validate_remote_url(
+                    dataset.get("staged_url"), f"{dataset_prefix}.staged_url"
+                )
+                dataset_checksum_url = dataset.get("checksum_url")
+                if dataset_checksum_url:
+                    _validate_remote_url(
+                        dataset_checksum_url, f"{dataset_prefix}.checksum_url"
+                    )
+    return manifest
+
+
 # def _verify_checksum(filepath: str, checksum_url: str, timeout: int = 300) -> None:
 #     """
 #     Fetch CASDA checksum file and verify downloaded file via MD5.
@@ -260,39 +448,38 @@ def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
     Each row has name, ra_string, dec_string, vsys, evaluation_file, staged_url,
     checksum_url, evaluation_file_url, evaluation_file_checksum_url.
     """
+    validate_manifest(manifest)
     rows = []
     sources = manifest.get("sources") or []
     for src in sources:
-        if not isinstance(src, dict):
-            continue
-        source_identifier = src.get("source_identifier") or src.get("name") or src.get("source") or ""
+        source_identifier = src["source_identifier"]
         ra = src.get("ra_string") or ""
         dec = src.get("dec_string") or ""
         vsys = src.get("vsys")
         for sbid_group in src.get("sbids") or []:
-            if not isinstance(sbid_group, dict):
-                continue
-            sbid = sbid_group.get("sbid") or ""
+            sbid = sbid_group["sbid"]
             evaluation_file = sbid_group.get("evaluation_file") or ""
             evaluation_file_url = sbid_group.get("evaluation_file_url") or ""
-            evaluation_file_checksum_url = sbid_group.get("evaluation_file_checksum_url") or ""
+            evaluation_file_checksum_url = (
+                sbid_group.get("evaluation_file_checksum_url") or ""
+            )
             for ds in sbid_group.get("datasets") or []:
-                if not isinstance(ds, dict):
-                    continue
-                name = ds.get("name") or ds.get("dataset_id") or ""
-                rows.append({
-                    "source_identifier": source_identifier,
-                    "sbid": str(sbid) if sbid is not None else "",
-                    "name": name,
-                    "ra_string": ra or ds.get("ra_string") or "",
-                    "dec_string": dec or ds.get("dec_string") or "",
-                    "vsys": vsys if vsys is not None else ds.get("vsys"),
-                    "evaluation_file": evaluation_file,
-                    "staged_url": ds.get("staged_url") or "",
-                    "checksum_url": ds.get("checksum_url") or "",
-                    "evaluation_file_url": evaluation_file_url,
-                    "evaluation_file_checksum_url": evaluation_file_checksum_url,
-                })
+                name = ds["name"]
+                rows.append(
+                    {
+                        "source_identifier": source_identifier,
+                        "sbid": str(sbid) if sbid is not None else "",
+                        "name": name,
+                        "ra_string": ra or ds.get("ra_string") or "",
+                        "dec_string": dec or ds.get("dec_string") or "",
+                        "vsys": vsys if vsys is not None else ds.get("vsys"),
+                        "evaluation_file": evaluation_file,
+                        "staged_url": ds.get("staged_url") or "",
+                        "checksum_url": ds.get("checksum_url") or "",
+                        "evaluation_file_url": evaluation_file_url,
+                        "evaluation_file_checksum_url": evaluation_file_checksum_url,
+                    }
+                )
     return rows
 
 
@@ -306,22 +493,35 @@ def _build_csv_string_from_dataset_rows(rows: list) -> str:
     """
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Name", "RA_string", "Dec_string", "Vsys", "", "evaluation_file", "source_identifier", "sbid"])
+    writer.writerow(
+        [
+            "Name",
+            "RA_string",
+            "Dec_string",
+            "Vsys",
+            "",
+            "evaluation_file",
+            "source_identifier",
+            "sbid",
+        ]
+    )
     for r in rows:
         vsys = r.get("vsys")
         vsys_str = "" if vsys is None else str(vsys)
         eval_file = r.get("evaluation_file", "")
         eval_file_path = "LinmosBeamImages" if eval_file else ""
-        writer.writerow([
-            r.get("name", ""),
-            r.get("ra_string", ""),
-            r.get("dec_string", ""),
-            vsys_str,
-            "",
-            eval_file_path,
-            r.get("source_identifier", ""),
-            r.get("sbid", ""),
-        ])
+        writer.writerow(
+            [
+                r.get("name", ""),
+                r.get("ra_string", ""),
+                r.get("dec_string", ""),
+                vsys_str,
+                "",
+                eval_file_path,
+                r.get("source_identifier", ""),
+                r.get("sbid", ""),
+            ]
+        )
     return buf.getvalue()
 
 
@@ -342,6 +542,7 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
         (credentials_path, csv_string, ms_urls_json, eval_urls_json)
     """
     manifest = json.loads(manifest_bytes.decode("utf-8"))
+    validate_manifest(manifest)
     inputs = manifest.get("inputs") or {}
     staged = manifest.get("staged") or {}
 
@@ -357,6 +558,7 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
         ms_urls = [
             {
                 "url": r["staged_url"],
+                "name": r["name"],
                 "checksum_url": r.get("checksum_url") or "",
                 "source_identifier": r.get("source_identifier") or "",
                 "sbid": r.get("sbid") or "",
@@ -370,12 +572,15 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
             url = r.get("evaluation_file_url") or ""
             if url and url not in seen_eval:
                 seen_eval.add(url)
-                eval_urls.append({
-                    "url": url,
-                    "checksum_url": r.get("evaluation_file_checksum_url") or "",
-                    "source_identifier": r.get("source_identifier") or "",
-                    "sbid": r.get("sbid") or "",
-                })
+                eval_urls.append(
+                    {
+                        "url": url,
+                        "name": r.get("evaluation_file") or _filename_from_url(url),
+                        "checksum_url": r.get("evaluation_file_checksum_url") or "",
+                        "source_identifier": r.get("source_identifier") or "",
+                        "sbid": r.get("sbid") or "",
+                    }
+                )
     else:
         # Legacy: download input_csv and use its content; use staged URL lists
         raw_ms = staged.get("ms_urls") or staged.get("ms") or []
@@ -386,8 +591,7 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
             if isinstance(u, str) and not u.endswith("checksum")
         ]
         eval_urls = [
-            {"url": u, "checksum_url": ""} if isinstance(u, str) else u
-            for u in raw_eval
+            {"url": u, "checksum_url": ""} if isinstance(u, str) else u for u in raw_eval
         ]
         input_csv_url = inputs.get("input_csv_url") or ""
         if input_csv_url:
@@ -478,10 +682,8 @@ def read_and_process_csv(filename: str) -> list:
         if not data:
             print(f"Warning: CSV file '{filename}' is empty.")
         else:
-            print(
-                f"CSV file '{filename}' successfully read and processed into a list of \
-                    dictionaries."
-            )
+            print(f"CSV file '{filename}' successfully read and processed into a list of \
+                    dictionaries.")
 
     return data
 
@@ -512,9 +714,7 @@ def _dynamic_str_to_obj(text: str):
     try:
         raw = base64.b64decode(s + "=" * pad)
     except binascii.Error as e:
-        raise ValueError(
-            "dynamic_parset is not JSON and is not valid base64"
-        ) from e
+        raise ValueError("dynamic_parset is not JSON and is not valid base64") from e
     return _dynamic_buffer_to_obj(raw)
 
 
@@ -531,8 +731,7 @@ def _drop_conflicting_parent_cimager_image_keys(static_parset: dict, prefix: str
     pimg = f"{p}.Images.image."
     pnames = f"{p}.Images.Names"
     if not (
-        pnames in static_parset
-        or any(str(k).startswith(pimg) for k in static_parset)
+        pnames in static_parset or any(str(k).startswith(pimg) for k in static_parset)
     ):
         return
     for bad in (
@@ -656,9 +855,14 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     if not beam_root:
         return ""
 
+    allowed_root = os.path.abspath(_resolve_staging_root_arg(None) or os.getcwd())
     # Make absolute inside the DALiuGE session workspace.
     if not os.path.isabs(beam_root):
-        beam_root = os.path.abspath(os.path.join(os.getcwd(), beam_root))
+        beam_root = _safe_join(allowed_root, beam_root)
+    else:
+        beam_root = os.path.abspath(beam_root)
+        if os.path.commonpath([allowed_root, beam_root]) != allowed_root:
+            raise ManifestValidationError("beam_root escapes the DALiuGE workspace")
 
     out_dir = beam_root
     os.makedirs(out_dir, exist_ok=True)
@@ -680,12 +884,13 @@ def download_file(
     timeout: int,
     buffer: int = 4194304,
     checksum_url: Optional[str] = None,
+    expected_filename: Optional[str] = None,
 ) -> str:
     """
     Downloads a file from the specified URL to the given output directory.
-    If a file with the same name already exists, it increments a counter in
-    the filename to avoid overwriting.
-    If checksum_url is provided, verifies the downloaded file via CASDA SHA-1 checksum.
+    Downloads atomically and validates any manifest-supplied MD5 checksum. If
+    ``expected_filename`` is available, a valid local file is reused before the
+    signed data URL is opened, so an expired URL does not break a safe retry.
 
     Parameters
     ----------
@@ -701,7 +906,10 @@ def download_file(
     buffer:
         Buffer size for reading data in chunks during download (default is 4MB).
     checksum_url:
-        Optional URL to CASDA .checksum file for SHA-1 verification after download.
+        Optional URL to a CASDA MD5 ``.checksum`` file.
+    expected_filename:
+        Manifest filename. Preferred over untrusted response headers and used for
+        the pre-network idempotency check.
 
     Returns
     -------
@@ -716,126 +924,182 @@ def download_file(
         marked failed.
     """
 
-    # Large timeout is necessary as the file may need to be staged from tape
+    safe_url = _validate_remote_url(url, "download URL")
+    if buffer <= 0:
+        raise ValueError("buffer must be greater than zero")
+    if timeout <= 0:
+        raise ValueError("timeout must be greater than zero")
 
-    try:
-        os.makedirs(output, exist_ok=True)
-    except Exception:
-        output = "."
+    output = os.path.abspath(str(output or "."))
+    os.makedirs(output, exist_ok=True)
+    if not os.path.isdir(output):
+        raise ManifestDownloadError("download output is not a directory")
 
-    if url is None:
-        raise ManifestDownloadError("URL is empty")
+    filename = _safe_download_filename(
+        expected_filename or _filename_from_url(safe_url), "download filename"
+    )
+    filepath = _safe_join(output, filename)
+    expected_hex = ""
+    if checksum_url and str(checksum_url).strip():
+        expected_hex, _local_checksum_path = _fetch_checksum_to_workspace(
+            str(checksum_url), timeout=timeout
+        )
 
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
-            filename = r.info().get_filename()
-            if not filename:
-                parsed = urlparse(url)
-                for val in parse_qs(parsed.query).get(
-                    "response-content-disposition", []
-                ):
-                    m = re.search(r'filename="?([^";]+)"?', val)
-                    if m:
-                        filename = unquote(m.group(1))
-                        break
-                if not filename:
-                    filename = os.path.basename(parsed.path.rstrip("/")) or "download"
-            filepath = f"{output}/{filename}"
-
-            http_size = int(r.info()["Content-Length"])
-
-            should_overwrite = False
-            if check_exists:
-                try:
-                    if os.path.exists(filepath):
-                        if checksum_url and str(checksum_url).strip():
-                            expected_hex, _local_checksum_path = _fetch_checksum_to_workspace(
-                                checksum_url, timeout=timeout
-                            )
-                            if expected_hex:
-                                algo = _infer_hash_algo_from_hex(expected_hex)
-                                actual_hex = _hash_file(filepath, algo)
-                                if actual_hex == expected_hex:
-                                    print(
-                                        f"File exists with matching checksum, ignoring: "
-                                        f"{os.path.basename(filepath)}"
-                                    )
-                                    return filepath
-                                print(
-                                    f"Checksum mismatch re-downloading: {os.path.basename(filepath)} "
-                                    f"(expected {expected_hex}, got {actual_hex})"
-                                )
-                                should_overwrite = True
-                        else:
-                            file_size = os.path.getsize(filepath)
-                            if file_size == http_size:
-                                print(f"File exists ignoring: {os.path.basename(filepath)}")
-                                return filepath
-                            should_overwrite = True
-                except FileNotFoundError:
-                    pass
-
-            target_path = filepath
-            tmp_path = None
-            if should_overwrite and os.path.exists(target_path):
-                tmp_path = f"{target_path}.tmp"
-                filepath = tmp_path
-
-            print(f"Downloading: {filepath} size: {http_size}")
-            count = 0
-            with open(filepath, "wb") as o:
-                while http_size > count:
-                    buff = r.read(buffer)
-                    if not buff:
-                        break
-                    o.write(buff)
-                    count += len(buff)
-
-            download_size = os.path.getsize(filepath)
-            if http_size != download_size:
-                raise ManifestDownloadError(
-                    f"Incomplete download for {url!r}: got {download_size} bytes, "
-                    f"expected {http_size}"
-                )
-
-            if tmp_path:
-                os.replace(tmp_path, target_path)
-                filepath = target_path
-
-            print(f"Download complete: {os.path.basename(filepath)}")
-            if checksum_url and str(checksum_url).strip():
-                expected_hex, _local_checksum_path = _fetch_checksum_to_workspace(
-                    checksum_url, timeout=timeout
-                )
-                if expected_hex:
-                    algo = _infer_hash_algo_from_hex(expected_hex)
-                    actual_hex = _hash_file(filepath, algo)
-                    if actual_hex != expected_hex:
-                        raise ManifestDownloadError(
-                            f"Checksum mismatch for {os.path.basename(filepath)}: "
-                            f"expected {expected_hex}, got {actual_hex}"
-                        )
-
+    if check_exists and os.path.isfile(filepath) and expected_hex:
+        algo = _infer_hash_algo_from_hex(expected_hex)
+        actual_hex = _hash_file(filepath, algo)
+        if actual_hex == expected_hex:
+            print(f"File exists with matching checksum, ignoring: {filename}")
             return filepath
-    except HTTPError as e:
+
+    temporary_path = ""
+    try:
+        with urllib.request.urlopen(safe_url, timeout=timeout) as response:
+            response_filename = response.info().get_filename()
+            if expected_filename is None and response_filename:
+                response_filename = _safe_download_filename(
+                    response_filename, "response filename"
+                )
+                filepath = _safe_join(output, response_filename)
+                filename = response_filename
+
+            content_length = response.info().get("Content-Length")
+            expected_size = int(content_length) if content_length is not None else None
+            file_handle, temporary_path = tempfile.mkstemp(
+                prefix=f".{filename}.", suffix=".part", dir=output
+            )
+            count = 0
+            with os.fdopen(file_handle, "wb") as stream:
+                while True:
+                    chunk = response.read(buffer)
+                    if not chunk:
+                        break
+                    stream.write(chunk)
+                    count += len(chunk)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+        if expected_size is not None and count != expected_size:
+            raise ManifestDownloadError(
+                f"Incomplete download for {_redact_url(safe_url)}: got {count} bytes, "
+                f"expected {expected_size}"
+            )
+        if expected_hex:
+            algo = _infer_hash_algo_from_hex(expected_hex)
+            actual_hex = _hash_file(temporary_path, algo)
+            if actual_hex != expected_hex:
+                raise ManifestDownloadError(
+                    f"Checksum mismatch for {filename}: expected {expected_hex}, "
+                    f"got {actual_hex}"
+                )
+        os.replace(temporary_path, filepath)
+        temporary_path = ""
+        print(f"Download complete: {filename} ({count} bytes)")
+        return filepath
+    except ManifestDownloadError:
+        raise
+    except HTTPError as error:
         raise ManifestDownloadError(
-            f"HTTP {e.code} {e.reason!r} for URL {url!r}"
-        ) from e
-    except URLError as e:
+            f"HTTP {error.code} downloading {_redact_url(safe_url)}"
+        ) from None
+    except (URLError, TimeoutError) as error:
         raise ManifestDownloadError(
-            f"Network error for URL {url!r}: {e.reason!r}"
-        ) from e
-    except TimeoutError as e:
+            f"Network failure downloading {_redact_url(safe_url)} "
+            f"({type(error).__name__})"
+        ) from None
+    except Exception as error:
         raise ManifestDownloadError(
-            f"Timed out after {timeout}s for URL {url!r}"
-        ) from e
+            f"Download failed for {_redact_url(safe_url)} ({type(error).__name__})"
+        ) from None
+    finally:
+        if temporary_path:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
 
 
 def _tar_member_name_safe(name: str) -> bool:
     n = (name or "").replace("\\", "/").strip()
-    if not n or n.startswith("/") or ".." in n.split("/"):
+    path = PurePosixPath(n)
+    if (
+        not n
+        or not path.parts
+        or n.startswith("/")
+        or ".." in path.parts
+        or re.match(r"^[A-Za-z]:", n)
+        or any(ord(char) < 32 or ord(char) == 127 for char in n)
+    ):
         return False
     return True
+
+
+def _validate_tar_member(info: tarfile.TarInfo) -> None:
+    if not _tar_member_name_safe(info.name):
+        raise ManifestDownloadError(f"Unsafe archive member name: {info.name!r}")
+    if info.issym() or info.islnk():
+        raise ManifestDownloadError(f"Archive links are not permitted: {info.name!r}")
+    if not (info.isdir() or info.isfile()):
+        raise ManifestDownloadError(f"Unsupported archive member type: {info.name!r}")
+
+
+def _extract_regular_tar_member(
+    archive: tarfile.TarFile, info: tarfile.TarInfo, staging_dir: str
+) -> None:
+    normalized_name = (info.name or "").replace("\\", "/")
+    path_parts = [
+        part for part in PurePosixPath(normalized_name).parts if part not in {"", "."}
+    ]
+    destination = _safe_join(staging_dir, *path_parts)
+    if info.isdir():
+        os.makedirs(destination, exist_ok=True)
+        return
+
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    source = archive.extractfile(info)
+    if source is None:
+        raise ManifestDownloadError(f"Unable to read archive member: {info.name!r}")
+    temporary_path = f"{destination}.part"
+    try:
+        with source, open(temporary_path, "wb") as target:
+            shutil.copyfileobj(source, target, length=4 * 1024 * 1024)
+            target.flush()
+            os.fsync(target.fileno())
+        if os.path.getsize(temporary_path) != info.size:
+            raise ManifestDownloadError(
+                f"Incomplete archive member {info.name!r}: expected {info.size} bytes"
+            )
+        os.replace(temporary_path, destination)
+    finally:
+        try:
+            os.unlink(temporary_path)
+        except FileNotFoundError:
+            pass
+
+
+def _publish_extracted_tree(staging_dir: str, output_dir: str) -> None:
+    """Merge a fully validated temporary extraction into its final workspace."""
+    output_root = Path(output_dir).resolve()
+    for source_path in Path(staging_dir).rglob("*"):
+        relative_path = source_path.relative_to(staging_dir)
+        destination = Path(output_dir, relative_path)
+        current = Path(output_dir)
+        for component in relative_path.parts:
+            current = current / component
+            if current.is_symlink():
+                raise ManifestDownloadError(
+                    f"Extraction destination contains a symbolic link: {relative_path}"
+                )
+        if os.path.commonpath([str(output_root), str(destination.resolve())]) != str(
+            output_root
+        ):
+            raise ManifestDownloadError("Extraction destination escapes output root")
+    for child in Path(staging_dir).iterdir():
+        destination = Path(output_dir, child.name)
+        if child.is_dir():
+            shutil.copytree(child, destination, dirs_exist_ok=True)
+        else:
+            os.replace(child, destination)
 
 
 def _eval_calibration_tar_wanted_member(info: tarfile.TarInfo) -> bool:
@@ -870,36 +1134,39 @@ def untar_file(
     None
 
     """
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
     try:
-        os.makedirs(output_dir, exist_ok=True)
-        with tarfile.open(tar_file) as tar:
-            if member_filter is None:
-                tar.extractall(path=output_dir)
-                print(f"{tar_file} un-tarred to {output_dir}")
-                return
-
-            to_extract = [m for m in tar.getmembers() if member_filter(m)]
+        with tarfile.open(tar_file) as archive:
+            members = archive.getmembers()
+            for member in members:
+                _validate_tar_member(member)
+            to_extract = (
+                members
+                if member_filter is None
+                else [member for member in members if member_filter(member)]
+            )
             if not to_extract:
                 raise ManifestDownloadError(
-                    f"No matching members to extract from {tar_file!r} "
-                    f"(filter returned no hits). Check tar layout vs filter."
+                    f"No matching members in archive {os.path.basename(tar_file)!r}"
                 )
-            for m in to_extract:
-                try:
-                    tar.extract(m, path=output_dir, filter="data")
-                except TypeError:
-                    tar.extract(m, path=output_dir)
-            print(
-                f"{tar_file} selectively extracted {len(to_extract)} member(s) to {output_dir}"
-            )
-
+            with tempfile.TemporaryDirectory(
+                prefix=".beampipe-extract-", dir=output_dir
+            ) as staging_dir:
+                for member in to_extract:
+                    _extract_regular_tar_member(archive, member, staging_dir)
+                _publish_extracted_tree(staging_dir, output_dir)
+        print(
+            f"Extracted {len(to_extract)} member(s) from "
+            f"{os.path.basename(tar_file)!r} to {output_dir}"
+        )
     except ManifestDownloadError:
         raise
-    except Exception as e:
-        if member_filter is None:
-            print(f"Failed to untar {tar_file}: {e}")
-        else:
-            raise ManifestDownloadError(f"Failed selective untar {tar_file!r}: {e}") from e
+    except Exception as error:
+        raise ManifestDownloadError(
+            f"Failed to extract {os.path.basename(tar_file)!r} "
+            f"({type(error).__name__})"
+        ) from None
 
 
 def _beam_dir_from_ms_tar_name(name: str) -> str:
@@ -960,6 +1227,65 @@ def _contsub_cube_base(image_stem: str) -> str:
 
 def _contsub_holo_outname(image_stem: str) -> str:
     return f"{_restored_cube_base(image_stem)}.contsub_holo"
+
+
+def _ms_directory_complete(path: str) -> bool:
+    """Recognise a completed MeasurementSet, including pre-marker legacy runs."""
+    if not os.path.isdir(path):
+        return False
+    return os.path.isfile(os.path.join(path, ".beampipe-extracted")) or os.path.isfile(
+        os.path.join(path, "table.dat")
+    )
+
+
+def _mark_ms_directory_complete(path: str) -> None:
+    if not os.path.isdir(path):
+        raise ManifestDownloadError(
+            f"Archive did not create expected MeasurementSet {os.path.basename(path)!r}"
+        )
+    _atomic_write_bytes(os.path.join(path, ".beampipe-extracted"), b"ok\n")
+
+
+def _normalize_evaluation_layout(path: str) -> None:
+    """Place selected PB FITS at ``eval/LinmosBeamImages`` for parset lookup."""
+    if not os.path.isdir(path):
+        return
+    target_dir = _safe_join(path, "LinmosBeamImages")
+    candidates = glob.glob(
+        os.path.join(path, "**", "LinmosBeamImages", "*.fits"), recursive=True
+    )
+    for candidate in candidates:
+        if not os.path.isfile(candidate) or os.path.getsize(candidate) <= 0:
+            continue
+        os.makedirs(target_dir, exist_ok=True)
+        destination = _safe_join(
+            target_dir, _safe_download_filename(os.path.basename(candidate), "FITS name")
+        )
+        if os.path.abspath(candidate) == destination:
+            continue
+        if os.path.exists(destination):
+            if _hash_file(destination, "md5") != _hash_file(candidate, "md5"):
+                raise ManifestDownloadError(
+                    f"Conflicting evaluation FITS filename: {os.path.basename(candidate)!r}"
+                )
+            continue
+        temporary_path = f"{destination}.part"
+        try:
+            shutil.copyfile(candidate, temporary_path)
+            os.replace(temporary_path, destination)
+        finally:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+
+
+def _evaluation_already_extracted(path: str) -> bool:
+    _normalize_evaluation_layout(path)
+    return any(
+        os.path.isfile(candidate) and os.path.getsize(candidate) > 0
+        for candidate in glob.glob(os.path.join(path, "LinmosBeamImages", "*.fits"))
+    )
 
 
 def degrees_to_hms(degrees: float) -> tuple:
@@ -1209,66 +1535,102 @@ def download_data_ms(
         raise ValueError("manifest input required; ms_urls_json must be provided")
     raw = json.loads(ms_urls_json)
     staging_root = _resolve_staging_root_arg(staging_root)
+    workspace_root = os.path.abspath(staging_root or os.getcwd())
     items = []
     for u in raw:
         if isinstance(u, str):
             if not u.endswith("checksum"):
-                items.append({"url": u, "checksum_url": "", "source_identifier": "", "sbid": ""})
+                items.append(
+                    {
+                        "url": _validate_remote_url(u, "MS URL"),
+                        "name": _filename_from_url(u),
+                        "checksum_url": "",
+                        "source_identifier": "",
+                        "sbid": "",
+                    }
+                )
         elif isinstance(u, dict) and u.get("url"):
-            items.append({
-                "url": u["url"],
-                "checksum_url": u.get("checksum_url") or "",
-                "source_identifier": u.get("source_identifier") or "",
-                "sbid": str(u.get("sbid") or ""),
-            })
-    file_list = []
+            source_identifier = str(u.get("source_identifier") or "").strip()
+            sbid = str(u.get("sbid") or "").strip()
+            if source_identifier or sbid:
+                source_identifier = _safe_path_segment(
+                    source_identifier, "source_identifier"
+                )
+                sbid = _safe_path_segment(sbid, "sbid")
+            items.append(
+                {
+                    "url": _validate_remote_url(u["url"], "MS URL"),
+                    "name": _safe_download_filename(
+                        u.get("name") or _filename_from_url(u["url"]),
+                        "MS filename",
+                    ),
+                    "checksum_url": u.get("checksum_url") or "",
+                    "source_identifier": source_identifier,
+                    "sbid": sbid,
+                }
+            )
+    file_records = []
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
     failed = False
     try:
-        futures = []
+        futures = {}
         for item in items:
-            stage_dir = "."
-            if staging_root and item.get("source_identifier") and item.get("sbid"):
-                stage_dir = os.path.join(staging_root, item["source_identifier"], str(item["sbid"]))
-            futures.append(executor.submit(
+            stage_dir = workspace_root
+            expected_ms = ""
+            if item["source_identifier"] and item["sbid"]:
+                stage_dir = _safe_join(
+                    workspace_root, item["source_identifier"], item["sbid"]
+                )
+                ms_name = item["name"]
+                if ms_name.endswith(".tar"):
+                    ms_name = ms_name[: -len(".tar")]
+                extract_root = _safe_join(stage_dir, _beam_dir_from_ms_tar_name(ms_name))
+                expected_ms = _safe_join(extract_root, _ms_dataset_basename(ms_name))
+                if _ms_directory_complete(expected_ms):
+                    print(
+                        f"MeasurementSet already extracted, skipping remote access: "
+                        f"{os.path.basename(expected_ms)}"
+                    )
+                    continue
+            future = executor.submit(
                 download_file,
                 url=item["url"],
                 check_exists=True,
                 output=stage_dir,
                 timeout=timeout_seconds,
                 checksum_url=item["checksum_url"] or None,
-            ))
+                expected_filename=item["name"],
+            )
+            futures[future] = (item, expected_ms)
         for future in concurrent.futures.as_completed(futures):
-            file_list.append(future.result())
+            item, expected_ms = futures[future]
+            file_records.append((future.result(), item, expected_ms))
     except Exception:
         failed = True
         raise
     finally:
         executor.shutdown(wait=not failed, cancel_futures=failed)
-    for file in file_list:
-        if file.endswith(".tar") and tarfile.is_tarfile(file):
-            base = os.path.basename(file)
-            ms_name = base[: -len(".tar")] if base.endswith(".tar") else base
-            extract_root = os.getcwd()
-            # try to find item metadata by filename match
-            src = ""
-            sbid = ""
-            for it in items:
-                if isinstance(it, dict) and ms_name in str(it.get("url") or ""):
-                    src = it.get("source_identifier") or ""
-                    sbid = it.get("sbid") or ""
-                    break
-            if src and sbid:
-                beam_dir = _beam_dir_from_ms_tar_name(ms_name)
-                extract_root = os.path.join(os.getcwd(), src, str(sbid), beam_dir)
-            expected_ms = os.path.join(extract_root, _ms_dataset_basename(ms_name))
-            if os.path.isdir(expected_ms):
-                print(
-                    f"Skipping untar of {os.path.basename(file)!r}: "
-                    f"MS directory already exists at {expected_ms!r}"
-                )
-                continue
-            untar_file(file, extract_root)
+    for file, item, expected_ms in file_records:
+        if not file.endswith(".tar") or not tarfile.is_tarfile(file):
+            raise ManifestDownloadError(
+                f"MS download is not a readable tar archive: {os.path.basename(file)!r}"
+            )
+        ms_name = item["name"]
+        if ms_name.endswith(".tar"):
+            ms_name = ms_name[: -len(".tar")]
+        extract_root = workspace_root
+        if item["source_identifier"] and item["sbid"]:
+            extract_root = _safe_join(
+                workspace_root,
+                item["source_identifier"],
+                item["sbid"],
+                _beam_dir_from_ms_tar_name(ms_name),
+            )
+        if expected_ms and _ms_directory_complete(expected_ms):
+            continue
+        untar_file(file, extract_root)
+        if expected_ms:
+            _mark_ms_directory_complete(expected_ms)
     print(".ms files downloaded (from manifest URLs)")
 
 
@@ -1317,36 +1679,73 @@ def download_data_eval(
         raise ValueError("manifest input required; eval_urls_json must be provided")
     raw = json.loads(eval_urls_json)
     staging_root = _resolve_staging_root_arg(staging_root)
+    workspace_root = os.path.abspath(staging_root or os.getcwd())
     items = []
     for u in raw:
         if isinstance(u, str):
-            items.append({"url": u, "checksum_url": "", "source_identifier": "", "sbid": ""})
+            items.append(
+                {
+                    "url": _validate_remote_url(u, "evaluation URL"),
+                    "name": _filename_from_url(u),
+                    "checksum_url": "",
+                    "source_identifier": "",
+                    "sbid": "",
+                }
+            )
         elif isinstance(u, dict) and u.get("url"):
-            items.append({
-                "url": u["url"],
-                "checksum_url": u.get("checksum_url") or "",
-                "source_identifier": u.get("source_identifier") or "",
-                "sbid": str(u.get("sbid") or ""),
-            })
+            source_identifier = str(u.get("source_identifier") or "").strip()
+            sbid = str(u.get("sbid") or "").strip()
+            if source_identifier or sbid:
+                source_identifier = _safe_path_segment(
+                    source_identifier, "source_identifier"
+                )
+                sbid = _safe_path_segment(sbid, "sbid")
+            items.append(
+                {
+                    "url": _validate_remote_url(u["url"], "evaluation URL"),
+                    "name": _safe_download_filename(
+                        u.get("name") or _filename_from_url(u["url"]),
+                        "evaluation filename",
+                    ),
+                    "checksum_url": u.get("checksum_url") or "",
+                    "source_identifier": source_identifier,
+                    "sbid": sbid,
+                }
+            )
     for item in items:
-        download_dir = os.getcwd()
-        if staging_root and item.get("source_identifier") and item.get("sbid"):
-            download_dir = os.path.join(staging_root, item["source_identifier"], str(item["sbid"]))
+        download_dir = workspace_root
+        extract_root = workspace_root
+        if item["source_identifier"] and item["sbid"]:
+            download_dir = _safe_join(
+                workspace_root, item["source_identifier"], item["sbid"]
+            )
+            extract_root = _safe_join(download_dir, "eval")
+            if _evaluation_already_extracted(extract_root):
+                print(
+                    "Evaluation FITS already extracted, skipping remote access: "
+                    f"{item['source_identifier']}/{item['sbid']}"
+                )
+                continue
         path = download_file(
             url=item["url"],
             check_exists=True,
             output=download_dir,
             timeout=timeout_seconds,
             checksum_url=item["checksum_url"] or None,
+            expected_filename=item["name"],
         )
-        if path.endswith(".tar") and tarfile.is_tarfile(path):
-            src = item.get("source_identifier") or ""
-            sbid = item.get("sbid") or ""
-            extract_root = os.getcwd()
-            if src and sbid:
-                extract_root = os.path.join(os.getcwd(), src, str(sbid), "eval")
-            # Avoid unpacking multi-GB calibration tarballs: only LinmosBeamImages FITS.
-            untar_file(path, extract_root, member_filter=_eval_calibration_tar_wanted_member)
+        if not path.endswith(".tar") or not tarfile.is_tarfile(path):
+            raise ManifestDownloadError(
+                "Evaluation download is not a readable tar archive: "
+                f"{os.path.basename(path)!r}"
+            )
+        # Avoid unpacking multi-GB calibration tarballs: only LinmosBeamImages FITS.
+        untar_file(path, extract_root, member_filter=_eval_calibration_tar_wanted_member)
+        if not _evaluation_already_extracted(extract_root):
+            raise ManifestDownloadError(
+                f"Evaluation archive {os.path.basename(path)!r} did not produce a "
+                "non-empty LinmosBeamImages FITS file"
+            )
     print("Evaluation files downloaded (from manifest URLs)")
 
 
@@ -1386,6 +1785,10 @@ def process_CSV_mosaic(filename: str) -> list:
             name = str(row[0]).strip()
             source_identifier = str(row[6]).strip() if len(row) >= 7 else ""
             sbid = str(row[7]).strip() if len(row) >= 8 else ""
+            if bool(source_identifier) != bool(sbid):
+                raise ManifestValidationError(
+                    "CSV source_identifier and sbid must be provided together"
+                )
 
             if name:  # Only process if 'name' is not empty
                 # Extract the base name from 'name'
@@ -1397,9 +1800,11 @@ def process_CSV_mosaic(filename: str) -> list:
                 # Generate the file names
                 prefix = ""
                 if source_identifier and sbid:
+                    source_identifier = _safe_path_segment(
+                        source_identifier, "CSV source_identifier"
+                    )
+                    sbid = _safe_path_segment(sbid, "CSV sbid")
                     prefix = f"{source_identifier}/{sbid}/"
-                elif sbid:
-                    prefix = f"{sbid}/"
                 linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(field_id)}"
                 weight_image = f"{prefix}{beam_dir}/weights.{field_id}.contsub_holo"
 
@@ -1426,10 +1831,8 @@ def process_CSV_mosaic(filename: str) -> list:
 
     # Check if data is not empty and print a message
     if data:
-        print(
-            f"CSV file '{filename}' successfully read and processed into a list of \
-                dictionaries."
-        )
+        print(f"CSV file '{filename}' successfully read and processed into a list of \
+                dictionaries.")
     else:
         print(f"Warning: CSV file '{filename}' is empty.")
 
@@ -1498,10 +1901,8 @@ def process_CSV(filename: str) -> list:
         if not data:
             print(f"Warning: CSV file '{filename}' is empty.")
         else:
-            print(
-                f"CSV file '{filename}' successfully read and processed into a list of \
-                    dictionaries."
-            )
+            print(f"CSV file '{filename}' successfully read and processed into a list of \
+                    dictionaries.")
 
     return data
 
@@ -1565,7 +1966,6 @@ def process_CSV_str(csv_string: str) -> list:
             evaluation_file = row[5].strip()
         except Exception as e:
             raise ValueError(f"Missing or invalid 'evaluation_file' (row[5]): {e}")
-   
 
         # name,ra_string,dec_string,vsys,,evaluation_file (index 5)
 
@@ -1574,6 +1974,10 @@ def process_CSV_str(csv_string: str) -> list:
         if len(row) >= 8:
             source_identifier = str(row[6]).strip()
             sbid = str(row[7]).strip()
+        if bool(source_identifier) != bool(sbid):
+            raise ManifestValidationError(
+                "CSV source_identifier and sbid must be provided together"
+            )
         ms_name = name
         if ms_name.endswith(".tar"):
             ms_name = ms_name[: -len(".tar")]
@@ -1582,9 +1986,14 @@ def process_CSV_str(csv_string: str) -> list:
         beam_dir = _beam_dir_from_ms_tar_name(ms_name)
         beam_root = ""
         if source_identifier and sbid:
-            beam_root = os.path.abspath(
-                os.path.join(os.getcwd(), source_identifier, str(sbid), beam_dir)
+            source_identifier = _safe_path_segment(
+                source_identifier, "CSV source_identifier"
             )
+            sbid = _safe_path_segment(sbid, "CSV sbid")
+            workspace_root = os.path.abspath(
+                _resolve_staging_root_arg(None) or os.getcwd()
+            )
+            beam_root = _safe_join(workspace_root, source_identifier, sbid, beam_dir)
             dataset_path = os.path.join(beam_root, ms_dir)
             eval_rel = str(evaluation_file).lstrip("/").strip()
             marker = "LinmosBeamImages/"
@@ -1592,10 +2001,20 @@ def process_CSV_str(csv_string: str) -> list:
                 eval_rel = marker + eval_rel.split(marker, 1)[1]
             else:
                 parts = eval_rel.split("/", 1)
-                if len(parts) == 2 and parts[0].startswith("calibration-metadata-processing-logs-"):
+                if len(parts) == 2 and parts[0].startswith(
+                    "calibration-metadata-processing-logs-"
+                ):
                     eval_rel = parts[1]
-            evaluation_file = os.path.abspath(
-                os.path.join(os.getcwd(), source_identifier, str(sbid), "eval", eval_rel)
+            if not _tar_member_name_safe(eval_rel):
+                raise ManifestValidationError(
+                    "CSV evaluation_file contains an unsafe path"
+                )
+            evaluation_file = _safe_join(
+                workspace_root,
+                source_identifier,
+                sbid,
+                "eval",
+                *PurePosixPath(eval_rel.replace("\\", "/")).parts,
             )
             evaluation_file = _resolve_primary_beam_cube_path(evaluation_file)
         else:
@@ -1603,13 +2022,11 @@ def process_CSV_str(csv_string: str) -> list:
                 dataset_path = ms_name
             else:
                 rel_dir = os.path.dirname(ms_name)
-                dataset_path = (
-                    os.path.join(rel_dir, ms_dir) if rel_dir else ms_dir
-                )
+                dataset_path = os.path.join(rel_dir, ms_dir) if rel_dir else ms_dir
 
         # Create the desired output dictionary
         output_dict = {
-            "Cimager.dataset": f"\"{dataset_path}\"",
+            "Cimager.dataset": f'"{dataset_path}"',
             "Cimager.beam_root": beam_root if (source_identifier and sbid) else "",
             "Cimager.Images.Names": f"[image.{field_id}]",
             "Cimager.Images.direction": f"[{RA_string},{Dec_string}, J2000]",
@@ -1676,6 +2093,10 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
         name = str(row[0]).strip()
         source_identifier = str(row[6]).strip() if len(row) >= 7 else ""
         sbid = str(row[7]).strip() if len(row) >= 8 else ""
+        if bool(source_identifier) != bool(sbid):
+            raise ManifestValidationError(
+                "CSV source_identifier and sbid must be provided together"
+            )
 
         if name:  # Only process if 'name' is not empty
             # Extract the base name from 'name'
@@ -1687,9 +2108,11 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
             # Generate the file names
             prefix = ""
             if source_identifier and sbid:
+                source_identifier = _safe_path_segment(
+                    source_identifier, "CSV source_identifier"
+                )
+                sbid = _safe_path_segment(sbid, "CSV sbid")
                 prefix = f"{source_identifier}/{sbid}/"
-            elif sbid:
-                prefix = f"{sbid}/"
             # linmos.imagetype=fits makes linmos append ".fits" automatically.
             linmos_image = f"{prefix}{beam_dir}/{_contsub_holo_outname(field_id)}"
             weight_image = f"{prefix}{beam_dir}/weights.{field_id}.contsub_holo"

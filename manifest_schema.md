@@ -1,23 +1,53 @@
-# Wallaby Hires manifest format
+# WALLABY hi-res manifest format
+
+The graph consumes the nested Beampipe execution-manifest shape below. Datasets
+belong to an SBID because an evaluation archive and its primary-beam products are
+shared by all datasets in that scheduling block.
 
 ```json
 {
-  "inputs": { "credentials_ini_url": "https://example.com/casda.ini" },
+  "inputs": {
+    "credentials_ini_url": "https://example.com/casda.ini"
+  },
   "sources": [
     {
       "source_identifier": "HIPASSJ1318-21",
       "ra_string": "13h18m00s",
       "dec_string": "-21.30.00",
       "vsys": 1234.5,
-      "datasets": [
+      "sbids": [
         {
-          "name": "vis_12345_1",
-          "staged_url": "https://data.example.com/vis_12345_1.ms.tar",
+          "sbid": "32736",
           "evaluation_file": "SB32736_eval.tar",
-          "evaluation_file_url": "https://data.example.com/SB32736_eval.tar"
+          "evaluation_file_url": "https://data.example.com/SB32736_eval.tar",
+          "evaluation_file_checksum_url": "https://data.example.com/SB32736_eval.tar.checksum",
+          "datasets": [
+            {
+              "name": "vis_12345_1.ms.tar",
+              "staged_url": "https://data.example.com/vis_12345_1.ms.tar",
+              "checksum_url": "https://data.example.com/vis_12345_1.ms.tar.checksum"
+            }
+          ]
         }
       ]
     }
   ]
 }
 ```
+
+Validation rules:
+
+- `sources`, `sbids`, and `datasets` must be non-empty arrays when `sources` is
+  present.
+- `source_identifier` and `sbid` must each be one portable filesystem component;
+  absolute paths, separators, traversal components, and control characters are
+  rejected.
+- `ra_string`, `dec_string`, and numeric `vsys` are required for every source.
+- Every dataset requires a safe basename in `name` and an HTTP(S) `staged_url`.
+- Evaluation and checksum URLs, when supplied, must use HTTP(S).
+- The legacy `inputs.input_csv_url` plus `staged` URL-list shape is accepted only
+  when `sources` is absent. It is retained for old graphs and should not be used by
+  new Beampipe projects.
+
+Use `wallaby_hires validate-manifest MANIFEST.json` to validate a file before graph
+submission.

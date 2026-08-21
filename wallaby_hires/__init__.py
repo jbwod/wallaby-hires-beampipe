@@ -3,9 +3,12 @@ __package__ = "wallaby_hires"
 
 # Import everything from funcs.py
 from .funcs import (
+    ManifestDownloadError,
+    ManifestValidationError,
     download_data_eval,
     download_data_ms,
     download_file,
+    extract_beam_root,
     imager,
     imcontsub,
     linmos,
@@ -18,9 +21,12 @@ from .funcs import (
     process_CSV_str,
     read_and_process_csv,
     untar_file,
-    extract_beam_root,
+    validate_manifest,
 )
+
 __all__ = [
+    "ManifestDownloadError",
+    "ManifestValidationError",
     "download_data_eval",
     "download_data_ms",
     "download_file",
@@ -36,5 +42,6 @@ __all__ = [
     "process_CSV_str",
     "read_and_process_csv",
     "untar_file",
+    "validate_manifest",
     "extract_beam_root",
 ]
