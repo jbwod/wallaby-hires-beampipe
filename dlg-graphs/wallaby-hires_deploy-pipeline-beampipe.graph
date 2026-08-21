@@ -5535,7 +5535,7 @@
                 },
                 {
                     "name": "image",
-                    "value": "csirocass/askapsoft:develop-openmpi4",
+                    "value": "csirocass/askapsoft@sha256:2b0cf3bac871664095cdfc9b13a6f438163d00dc344c3c1db8fcde4eef1aed65",
                     "defaultValue": "csirocass/yandasoft:dev-openmpi2",
                     "description": "Name of the docker image to be used for this application",
                     "readonly": false,
@@ -6141,7 +6141,7 @@
                 },
                 {
                     "name": "image",
-                    "value": "csirocass/askapsoft:develop-openmpi4",
+                    "value": "csirocass/askapsoft@sha256:2b0cf3bac871664095cdfc9b13a6f438163d00dc344c3c1db8fcde4eef1aed65",
                     "defaultValue": "csirocass/yandasoft:dev-openmpi2",
                     "description": "Name of the docker image to be used for this application",
                     "readonly": false,
@@ -6383,7 +6383,7 @@
                 },
                 {
                     "name": "image",
-                    "value": "csirocass/askapsoft:develop-openmpi4",
+                    "value": "csirocass/askapsoft@sha256:2b0cf3bac871664095cdfc9b13a6f438163d00dc344c3c1db8fcde4eef1aed65",
                     "defaultValue": "csirocass/yandasoft:dev-openmpi2",
                     "description": "Name of the docker image to be used for this application",
                     "readonly": false,
@@ -10072,7 +10072,7 @@
                 },
                 {
                     "name": "image",
-                    "value": "csirocass/askapsoft:develop-openmpi4",
+                    "value": "csirocass/askapsoft@sha256:2b0cf3bac871664095cdfc9b13a6f438163d00dc344c3c1db8fcde4eef1aed65",
                     "defaultValue": "csirocass/yandasoft:dev-openmpi2",
                     "description": "Name of the docker image to be used for this application",
                     "readonly": false,

@@ -67,6 +67,17 @@ The earlier hi-res path was a manually invoked script (not under version control
 
 Legacy deploy graphs used the `icrar/yanda_imager:0.4` Docker image; current **`*-beampipe.graph`** targets Pawsey Singularity and the layout described below.
 
+The Docker deployment graph pins ASKAPsoft by registry digest. The Setonix graph
+does not contain a user, project allocation, or personal image path; its execution
+environment must provide:
+
+- `BEAMPIPE_SLURM_ACCOUNT` — the approved Pawsey allocation for the run;
+- `BEAMPIPE_ASKAPSOFT_SIF` — an immutable, deployment-managed ASKAPsoft SIF path.
+
+Beampipe project configuration must fetch these graph files by an immutable commit
+URL (or verify a configured SHA-256 digest). The `repoBranch` field in EAGLE model
+metadata describes where the graph is edited and is not an execution pin.
+
 ## Pipeline architecture
 
 > End-to-end, production ready flow under Beampipe: manifest ⮕ staging ⮕ scatter per beam ⮕ imager / imcontsub / linmos ⮕ mosaic.
