@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOCKER_GRAPH = ROOT / "dlg-graphs/wallaby-hires_deploy-pipeline-beampipe.graph"
 SETONIX_GRAPH = ROOT / "dlg-graphs/wallaby-hires_deploy-setonix-beampipe.graph"
+TEST_GRAPH = ROOT / "dlg-graphs/wallaby-hires_test-pipeline-beampipe.graph"
+MANIFEST_FIXTURE = ROOT / "wallaby_hires/test_staging_e2e_manifest.json"
 ASKAPSOFT_DIGEST = (
     "csirocass/askapsoft@"
     "sha256:2b0cf3bac871664095cdfc9b13a6f438163d00dc344c3c1db8fcde4eef1aed65"
@@ -36,3 +38,10 @@ def test_setonix_graph_uses_deployment_managed_account_and_image():
     assert commands.count("BEAMPIPE_ASKAPSOFT_SIF") >= 4
     assert "pawsey0411" not in commands
     assert "jblackwood" not in commands
+
+
+def test_graph_samples_do_not_commit_signed_url_credentials():
+    for path in (DOCKER_GRAPH, TEST_GRAPH, MANIFEST_FIXTURE):
+        contents = path.read_text(encoding="utf-8")
+        assert "X-Amz-Signature" not in contents
+        assert "X-Amz-Credential" not in contents
