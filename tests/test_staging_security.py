@@ -82,7 +82,7 @@ def test_ms_retry_uses_completed_local_dataset_before_expired_url(monkeypatch, t
 
 
 def test_eval_retry_uses_local_fits_before_expired_url(monkeypatch, tmp_path):
-    expected = tmp_path / "HIPASSJ1318-21/34166/eval/x/LinmosBeamImages/pb.fits"
+    expected = tmp_path / "HIPASSJ1318-21/34166/eval/x/LinmosBeamImages/pb.cube.fits"
     expected.parent.mkdir(parents=True)
     expected.write_bytes(b"fits")
     monkeypatch.setattr(
@@ -105,8 +105,67 @@ def test_eval_retry_uses_local_fits_before_expired_url(monkeypatch, tmp_path):
 
     assert expected.read_bytes() == b"fits"
     assert (
-        tmp_path / "HIPASSJ1318-21/34166/eval/LinmosBeamImages/pb.fits"
+        tmp_path / "HIPASSJ1318-21/34166/eval/LinmosBeamImages/pb.cube.fits"
     ).read_bytes() == b"fits"
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        [("x/LinmosBeamImages/pb.fits", b"fits", "file")],
+        [("x/LinmosBeamImages/empty.cube.fits", b"", "file")],
+        [
+            ("x/LinmosBeamImages/first.cube.fits", b"fits-1", "file"),
+            ("x/LinmosBeamImages/second.cube.fits", b"fits-2", "file"),
+        ],
+    ],
+)
+def test_evaluation_archive_requires_one_nonempty_cube_fits(tmp_path, members):
+    archive = tmp_path / "evaluation.tar"
+    output = tmp_path / "out"
+    _write_tar(archive, members)
+
+    with pytest.raises(ManifestDownloadError):
+        untar_file(
+            str(archive),
+            str(output),
+            member_filter=funcs._eval_calibration_tar_wanted_member,
+            expected_member_count=1,
+        )
+
+    assert not list(output.rglob("*.cube.fits"))
+
+
+def test_evaluation_archive_extracts_only_the_single_cube_fits(tmp_path):
+    archive = tmp_path / "evaluation.tar"
+    output = tmp_path / "out"
+    _write_tar(
+        archive,
+        [
+            ("x/LinmosBeamImages/pb.cube.fits", b"cube", "file"),
+            ("x/LinmosBeamImages/diagnostic.fits", b"diagnostic", "file"),
+        ],
+    )
+
+    untar_file(
+        str(archive),
+        str(output),
+        member_filter=funcs._eval_calibration_tar_wanted_member,
+        expected_member_count=1,
+    )
+
+    assert (output / "x/LinmosBeamImages/pb.cube.fits").read_bytes() == b"cube"
+    assert not (output / "x/LinmosBeamImages/diagnostic.fits").exists()
+
+
+def test_primary_beam_resolution_rejects_ambiguous_cube_fits(tmp_path):
+    beam_dir = tmp_path / "LinmosBeamImages"
+    beam_dir.mkdir()
+    (beam_dir / "a.cube.fits").write_bytes(b"fits-1")
+    (beam_dir / "b.cube.fits").write_bytes(b"fits-2")
+
+    with pytest.raises(funcs.ManifestValidationError, match="exactly one"):
+        funcs._select_primary_beam_cube_fits_in_directory(str(beam_dir))
 
 
 def test_download_error_redacts_signed_url(monkeypatch, tmp_path):

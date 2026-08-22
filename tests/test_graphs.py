@@ -7,6 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCKER_GRAPH = ROOT / "dlg-graphs/wallaby-hires_deploy-pipeline-beampipe.graph"
 SETONIX_GRAPH = ROOT / "dlg-graphs/wallaby-hires_deploy-setonix-beampipe.graph"
 TEST_GRAPH = ROOT / "dlg-graphs/wallaby-hires_test-pipeline-beampipe.graph"
+NO_DOWNLOAD_GRAPH = (
+    ROOT / "dlg-graphs/wallaby-hires_test-pipeline-nodownloads-beampipe.graph"
+)
 MANIFEST_FIXTURE = ROOT / "wallaby_hires/test_staging_e2e_manifest.json"
 ASKAPSOFT_DIGEST = (
     "csirocass/askapsoft@"
@@ -75,6 +78,13 @@ def test_setonix_graph_uses_deployment_managed_account_and_image():
     assert commands.count("BEAMPIPE_ASKAPSOFT_SIF") >= 4
     assert "pawsey0411" not in commands
     assert "jblackwood" not in commands
+
+
+def test_no_download_graph_selects_structural_manifest_admission_explicitly():
+    values = _field_values(NO_DOWNLOAD_GRAPH)
+
+    assert "wallaby_hires.prestage_manifest_inputs_no_download" in values
+    assert "wallaby_hires.prestage_manifest_inputs" not in values
 
 
 def _is_secret_sensitive_artifact(path):

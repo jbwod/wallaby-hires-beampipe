@@ -5,6 +5,7 @@ __package__ = "wallaby_hires"
 from .funcs import (
     ManifestDownloadError,
     ManifestValidationError,
+    ManifestValidationMode,
     download_data_eval,
     download_data_ms,
     download_file,
@@ -15,6 +16,7 @@ from .funcs import (
     mosaic,
     parset_mixing,
     prestage_manifest_inputs,
+    prestage_manifest_inputs_no_download,
     process_CSV,
     process_CSV_mosaic,
     process_CSV_mosaic_str,
@@ -34,6 +36,7 @@ from .outputs import (
 __all__ = [
     "ManifestDownloadError",
     "ManifestValidationError",
+    "ManifestValidationMode",
     "download_data_eval",
     "download_data_ms",
     "download_file",
@@ -43,6 +46,7 @@ __all__ = [
     "mosaic",
     "parset_mixing",
     "prestage_manifest_inputs",
+    "prestage_manifest_inputs_no_download",
     "process_CSV",
     "process_CSV_mosaic",
     "process_CSV_mosaic_str",

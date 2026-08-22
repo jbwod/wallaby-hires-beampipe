@@ -9,7 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Sequence
 
-from .funcs import validate_manifest
+from .funcs import ManifestValidationMode, validate_manifest
 from .outputs import (
     OutputValidationError,
     build_output_inventory,
@@ -42,6 +42,12 @@ def _parser() -> argparse.ArgumentParser:
         "validate-manifest", help="validate a manifest JSON file"
     )
     validate.add_argument("manifest", type=Path)
+    validate.add_argument(
+        "--mode",
+        choices=[mode.value for mode in ManifestValidationMode],
+        default=ManifestValidationMode.SETONIX_PRODUCTION.value,
+        help="admission policy (default: fail-closed Setonix production)",
+    )
 
     inventory = commands.add_parser(
         "inventory-outputs", help="validate final products and write SHA-256 evidence"
@@ -69,6 +75,7 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("source_root", type=Path)
     publish.add_argument("inventory", type=Path)
     publish.add_argument("destination_root", type=Path)
+
     return parser
 
 
@@ -79,8 +86,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.command == "validate-manifest":
             with arguments.manifest.open("r", encoding="utf-8") as stream:
                 manifest = json.load(stream)
-            validate_manifest(manifest)
+            validate_manifest(manifest, arguments.mode)
             summary = {
+                "mode": arguments.mode,
                 "valid": True,
                 "sources": len(manifest.get("sources") or []),
             }

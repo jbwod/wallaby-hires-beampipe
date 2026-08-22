@@ -90,10 +90,14 @@ def test_cli_validates_manifest_and_outputs(tmp_path, capsys):
                 "sbids": [
                     {
                         "sbid": "34166",
+                        "evaluation_file": "evaluation.tar",
+                        "evaluation_file_url": "https://example.test/evaluation.tar",
+                        "evaluation_file_checksum_url": "https://example.test/evaluation.tar.checksum",
                         "datasets": [
                             {
                                 "name": "beam.ms.tar",
                                 "staged_url": "https://example.test/beam.ms.tar",
+                                "checksum_url": "https://example.test/beam.ms.tar.checksum",
                             }
                         ],
                     }
@@ -105,7 +109,11 @@ def test_cli_validates_manifest_and_outputs(tmp_path, capsys):
     manifest_path.write_text(json.dumps(manifest))
 
     assert main(["validate-manifest", str(manifest_path)]) == 0
-    assert json.loads(capsys.readouterr().out) == {"sources": 1, "valid": True}
+    assert json.loads(capsys.readouterr().out) == {
+        "mode": "setonix-production",
+        "sources": 1,
+        "valid": True,
+    }
 
     _products(tmp_path / "outputs")
     assert main(["inventory-outputs", str(tmp_path / "outputs")]) == 0

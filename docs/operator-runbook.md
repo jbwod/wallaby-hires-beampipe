@@ -190,7 +190,7 @@ guarantees the same shared session directory. The nested layout is:
 
 ```text
 <staging-root>/<source_identifier>/<sbid>/beamNN/<dataset>.ms
-<staging-root>/<source_identifier>/<sbid>/eval/LinmosBeamImages/<primary-beam>.fits
+<staging-root>/<source_identifier>/<sbid>/eval/LinmosBeamImages/<primary-beam>.cube.fits
 ```
 
 Size storage for downloaded archives, extracted MeasurementSets (up to roughly
@@ -202,8 +202,9 @@ Retries are deliberately conservative:
 
 - an MS is considered complete when its directory contains
   `.beampipe-extracted`, or legacy `table.dat` exists;
-- an evaluation archive is considered complete when the normalized
-  `eval/LinmosBeamImages` directory contains a non-empty FITS file; and
+- an evaluation archive is considered complete only when the normalized
+  `eval/LinmosBeamImages` directory contains exactly one non-empty `*.cube.fits`
+  file; and
 - an already downloaded archive is reused before network access only when a
   supplied checksum still matches.
 
@@ -293,11 +294,11 @@ or component graphs as a production substitute.
 |---|---|
 | `ModuleNotFoundError: wallaby_hires` | The package was installed with the wrong interpreter or is absent on that executor. Check version and `wallaby_hires.__file__` using `/daliuge/.venv/bin/python` in all four local containers. |
 | TM translation succeeds, then a PyFunc fails on an NM | Package versions differ across services, or only manager containers were updated. Redeploy one pinned image/wheel everywhere. |
-| Manifest validates but the download graph reports an empty URL list | A no-download-compatible manifest omitted `staged_url`. Restage the inputs and use the production preflight before selecting a download graph. |
+| Production manifest admission rejects a URL or archive field | Restage the inputs and supply the required HTTPS visibility/evaluation URLs and checksum URLs. Use `structural-no-download` only with the no-download graph. |
 | HTTP 403 from a staged URL | The signed URL probably expired. Obtain a newly staged manifest unless a completed local MS/evaluation tree satisfies the documented retry marker. |
 | Checksum mismatch or incomplete download | Do not bypass validation. Quarantine the affected archive/staging directory, obtain fresh staging evidence, and retry in a clean target. |
 | Unsafe filename, archive member, path segment, or URL | The input violates the security boundary. Correct or reject the manifest/archive rather than repeatedly retrying it. |
-| Evaluation archive produced no PB FITS | The archive lacks a non-empty `LinmosBeamImages/*.fits` member or used the wrong SBID. Correct the evaluation artifact. |
+| Evaluation archive produced zero or multiple PB cubes | The archive must contain exactly one non-empty `LinmosBeamImages/*.cube.fits` member for the selected SBID. Correct the evaluation artifact. |
 | `BEAMPIPE_* are required`, `singularity: command not found`, unreadable SIF, or invalid Slurm account | Fix the environment inherited by remote DALiuGE apps, load the required module, and validate the allocation/SIF on a compute node. |
 | Permission denied, `ENOSPC`, or unexplained extraction failure | Confirm the same writable shared staging mount on every node and check both bytes and inodes. |
 | No-download run succeeds but products are empty | Expected: Python stubs create zero-byte placeholders. This graph cannot satisfy output verification. |

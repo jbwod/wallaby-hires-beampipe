@@ -76,17 +76,33 @@ string for `vsys`, and evaluation fields repeated on each dataset. This is one
 Unknown prepared-metadata fields are ignored. If evaluation fields exist at both
 levels, the SBID-level value wins. The graph pre-stage function returns a four-item
 tuple: credentials path, generated CSV text, MS URL-list JSON, and evaluation
-URL-list JSON. Evaluation downloads are deduplicated by URL.
+URL-list JSON. Evaluation downloads are deduplicated per source, SBID, and URL.
 
-## Structural validation
+## Admission modes
 
-Run validation with the exact runtime interpreter:
+Run fail-closed Setonix production validation with the exact runtime interpreter:
 
 ```bash
 /daliuge/.venv/bin/python -m wallaby_hires validate-manifest manifest.json
 ```
 
-The validator enforces the following rules when `sources` is present:
+`setonix-production` is the CLI, `validate_manifest`, and
+`prestage_manifest_inputs` default. It enforces all structural rules plus:
+
+- exactly one source and at least one dataset;
+- one evaluation `.tar` archive description per SBID, either on the SBID or
+  repeated identically on every dataset in that SBID;
+- a required HTTPS `staged_url` and HTTPS `checksum_url` for every visibility
+  dataset;
+- required HTTPS evaluation archive and checksum URLs for every SBID; and
+- one generated visibility download per dataset and one generated evaluation
+  download per SBID.
+
+Missing fields, legacy shapes, HTTP URLs, conflicting repeated evaluation
+metadata, duplicate SBIDs, and empty generated download lists fail admission
+before credentials are fetched or downloads are started.
+
+The structural rules shared by both modes are:
 
 - `sources`, `sbids`, and `datasets` are non-empty arrays.
 - Every source has a portable single-component `source_identifier`, non-empty
@@ -102,33 +118,41 @@ The validator enforces the following rules when `sources` is present:
   may be on the SBID or repeated in Core dataset records.
 
 Validation is structural and does not fetch URLs, validate credentials, prove a
-checksum, or confirm that a URL will still be valid when the graph runs.
+checksum, inspect the evaluation archive, or confirm that a URL will still be
+valid when the graph runs.
 
-If `sources` is absent, the implementation enters legacy compatibility mode and
-does not validate a nested dataset shape; even `{}` is accepted. This is not a
-production admission check. New Beampipe manifests must always contain `sources`.
+After the evaluation archive is downloaded, runtime extraction accepts only a
+non-empty regular member below `LinmosBeamImages/` whose name ends in
+`.cube.fits`. Zero or multiple matches fail before extraction is published, and
+primary-beam resolution never falls back to the first lexicographic candidate.
+This runtime check is necessarily separate from manifest admission because the
+current Core manifest describes the archive but does not name its inner member.
 
-## Production download preflight
+For the no-download control-plane graph, select the weaker policy explicitly:
 
-The common validator intentionally permits missing URLs for the no-download graph.
-Before selecting a download/deploy graph, the submitting system must additionally
-ensure that every dataset has a `staged_url`, and that each required SBID has an
-evaluation filename and URL. It must also reject empty generated MS/evaluation URL
-lists: the current download functions accept JSON `[]` as a no-op. Production
-should supply the corresponding checksum URLs. The current download checks are
-CASDA MD5 transfer-integrity checks; they are not signatures or proof of publisher
-authenticity.
+```bash
+/daliuge/.venv/bin/python -m wallaby_hires validate-manifest \
+  manifest.json --mode structural-no-download
+```
+
+The no-download graph calls `prestage_manifest_inputs_no_download`, which binds
+that policy explicitly. If `sources` is absent, only this mode enters legacy
+compatibility and accepts the old flat `inputs`/`staged` shape. New Beampipe
+manifests should always contain `sources`.
+
+Production download checks use CASDA MD5 evidence for transfer integrity; they
+are not signatures or proof of publisher authenticity.
 
 Use HTTPS and restrict outbound access to approved archive hosts at the deployment
-boundary. HTTP is accepted for compatibility, and the package does not implement a
-host allowlist.
+boundary. HTTP is accepted only by structural/no-download compatibility mode, and
+the package does not implement a host allowlist.
 
 ## No-download semantics
 
 `wallaby-hires_test-pipeline-nodownloads-beampipe.graph` is a control-plane smoke
-test. It still runs manifest ingestion, normalization, CSV generation, scatter,
-parset mixing, and Python imaging stubs, but both MS and evaluation download apps
-are absent.
+test. It explicitly selects `structural-no-download` admission and still runs
+manifest ingestion, normalization, CSV generation, scatter, parset mixing, and
+Python imaging stubs, but both MS and evaluation download apps are absent.
 
 Consequently:
 

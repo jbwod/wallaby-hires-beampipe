@@ -25,6 +25,7 @@ import tarfile
 import tempfile
 import urllib
 import urllib.request
+from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
 from urllib.error import HTTPError, URLError
@@ -45,7 +46,19 @@ class ManifestValidationError(ValueError):
     """Raised when a Beampipe execution manifest is unsafe or incomplete."""
 
 
+class ManifestValidationMode(str, Enum):
+    """Admission policies for graph execution manifests."""
+
+    SETONIX_PRODUCTION = "setonix-production"
+    STRUCTURAL_NO_DOWNLOAD = "structural-no-download"
+
+
 _SAFE_PATH_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$")
+_EVALUATION_FIELDS = (
+    "evaluation_file",
+    "evaluation_file_url",
+    "evaluation_file_checksum_url",
+)
 
 
 def _redact_url(url: str) -> str:
@@ -110,6 +123,32 @@ def _validate_remote_url(value: object, field_name: str, required: bool = True) 
     return url
 
 
+def _validate_https_url(value: object, field_name: str) -> str:
+    """Validate a required HTTPS URL for production data-plane access."""
+    if not str(value or "").strip():
+        raise ManifestValidationError(
+            f"{field_name} is required in setonix-production mode"
+        )
+    url = _validate_remote_url(value, field_name)
+    if urlparse(url).scheme != "https":
+        raise ManifestValidationError(f"{field_name} must be an HTTPS URL")
+    return url
+
+
+def _coerce_manifest_validation_mode(
+    validation_mode: ManifestValidationMode | str,
+) -> ManifestValidationMode:
+    if isinstance(validation_mode, ManifestValidationMode):
+        return validation_mode
+    try:
+        return ManifestValidationMode(str(validation_mode))
+    except ValueError:
+        choices = ", ".join(mode.value for mode in ManifestValidationMode)
+        raise ManifestValidationError(
+            f"validation_mode must be one of: {choices}"
+        ) from None
+
+
 def _filename_from_url(url: str) -> str:
     """Resolve a safe filename from a URL without opening the remote resource."""
     parsed = urlparse(url)
@@ -155,10 +194,13 @@ def _select_primary_beam_cube_fits_in_directory(
     hint = os.path.basename(filename_hint) if filename_hint else ""
     if hint and ".SB" in hint:
         prefix = hint.split(".SB", 1)[0]
-        for c in candidates:
-            if os.path.basename(c).startswith(prefix):
-                return c
-    return candidates[0]
+        matches = [c for c in candidates if os.path.basename(c).startswith(prefix)]
+        if len(matches) == 1:
+            return matches[0]
+    raise ManifestValidationError(
+        f"expected exactly one primary-beam *.cube.fits in {dirpath!r}; "
+        f"found {len(candidates)}"
+    )
 
 
 def _resolve_primary_beam_cube_path(requested_abs_path: str) -> str:
@@ -346,23 +388,83 @@ def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
     return os.environ.get("WALLABY_HIRES_STAGING_ROOT", "").strip()
 
 
-def validate_manifest(manifest: dict) -> dict:
+def _validate_production_sbid_evaluation(
+    sbid_group: dict, sbid_prefix: str, datasets: list
+) -> None:
+    """Require one consistently described evaluation archive for an SBID."""
+    effective_values = {}
+    for field_name in _EVALUATION_FIELDS:
+        group_value = str(sbid_group.get(field_name) or "").strip()
+        dataset_values = [
+            str(dataset.get(field_name) or "").strip() for dataset in datasets
+        ]
+        supplied_values = {value for value in [group_value, *dataset_values] if value}
+        if len(supplied_values) > 1:
+            raise ManifestValidationError(
+                f"{sbid_prefix}.{field_name} must identify exactly one "
+                "evaluation archive per SBID"
+            )
+        if group_value:
+            effective_value = group_value
+        else:
+            if any(not value for value in dataset_values):
+                raise ManifestValidationError(
+                    f"{sbid_prefix}.{field_name} is required on the SBID or every "
+                    "dataset in setonix-production mode"
+                )
+            effective_value = dataset_values[0]
+        effective_values[field_name] = effective_value
+
+    evaluation_file = _safe_download_filename(
+        effective_values["evaluation_file"], f"{sbid_prefix}.evaluation_file"
+    )
+    if not evaluation_file.endswith(".tar"):
+        raise ManifestValidationError(
+            f"{sbid_prefix}.evaluation_file must name a .tar archive"
+        )
+    _validate_https_url(
+        effective_values["evaluation_file_url"],
+        f"{sbid_prefix}.evaluation_file_url",
+    )
+    _validate_https_url(
+        effective_values["evaluation_file_checksum_url"],
+        f"{sbid_prefix}.evaluation_file_checksum_url",
+    )
+
+
+def validate_manifest(
+    manifest: dict,
+    validation_mode: ManifestValidationMode | str = (
+        ManifestValidationMode.SETONIX_PRODUCTION
+    ),
+) -> dict:
     """
     Validate the nested Beampipe manifest consumed by the staging graph.
 
-    Legacy manifests without ``sources`` remain supported by
-    :func:`prestage_manifest_inputs`. Once ``sources`` is present, malformed rows
-    fail admission instead of being silently discarded.
+    Setonix production is the fail-closed default. Legacy and URL-optional
+    manifests are accepted only when ``structural-no-download`` is selected
+    explicitly.
     """
+    mode = _coerce_manifest_validation_mode(validation_mode)
+    production = mode is ManifestValidationMode.SETONIX_PRODUCTION
     if not isinstance(manifest, dict):
         raise ManifestValidationError("manifest must be a JSON object")
 
     sources = manifest.get("sources")
     if sources is None:
+        if production:
+            raise ManifestValidationError(
+                "sources is required in setonix-production mode"
+            )
         return manifest
     if not isinstance(sources, list) or not sources:
         raise ManifestValidationError("sources must be a non-empty array")
+    if production and len(sources) != 1:
+        raise ManifestValidationError(
+            "setonix-production mode requires exactly one source"
+        )
 
+    dataset_count = 0
     for source_index, source in enumerate(sources):
         prefix = f"sources[{source_index}]"
         if not isinstance(source, dict):
@@ -384,11 +486,17 @@ def validate_manifest(manifest: dict) -> dict:
         sbids = source.get("sbids")
         if not isinstance(sbids, list) or not sbids:
             raise ManifestValidationError(f"{prefix}.sbids must be a non-empty array")
+        seen_sbids = set()
         for sbid_index, sbid_group in enumerate(sbids):
             sbid_prefix = f"{prefix}.sbids[{sbid_index}]"
             if not isinstance(sbid_group, dict):
                 raise ManifestValidationError(f"{sbid_prefix} must be an object")
-            _safe_path_segment(sbid_group.get("sbid"), f"{sbid_prefix}.sbid")
+            sbid = _safe_path_segment(sbid_group.get("sbid"), f"{sbid_prefix}.sbid")
+            if production and sbid in seen_sbids:
+                raise ManifestValidationError(
+                    f"{prefix}.sbids contains duplicate SBID {sbid!r}"
+                )
+            seen_sbids.add(sbid)
             evaluation_file = sbid_group.get("evaluation_file")
             evaluation_url = sbid_group.get("evaluation_file_url")
             if evaluation_file:
@@ -406,6 +514,7 @@ def validate_manifest(manifest: dict) -> dict:
                 raise ManifestValidationError(
                     f"{sbid_prefix}.datasets must be a non-empty array"
                 )
+            dataset_count += len(datasets)
             for dataset_index, dataset in enumerate(datasets):
                 dataset_prefix = f"{sbid_prefix}.datasets[{dataset_index}]"
                 if not isinstance(dataset, dict):
@@ -419,9 +528,15 @@ def validate_manifest(manifest: dict) -> dict:
                 staged_url = dataset.get("staged_url")
                 if staged_url:
                     _validate_remote_url(staged_url, f"{dataset_prefix}.staged_url")
+                if production:
+                    _validate_https_url(staged_url, f"{dataset_prefix}.staged_url")
                 dataset_checksum_url = dataset.get("checksum_url")
                 if dataset_checksum_url:
                     _validate_remote_url(
+                        dataset_checksum_url, f"{dataset_prefix}.checksum_url"
+                    )
+                if production:
+                    _validate_https_url(
                         dataset_checksum_url, f"{dataset_prefix}.checksum_url"
                     )
                 dataset_evaluation_file = dataset.get("evaluation_file")
@@ -444,6 +559,12 @@ def validate_manifest(manifest: dict) -> dict:
                         dataset_evaluation_checksum_url,
                         f"{dataset_prefix}.evaluation_file_checksum_url",
                     )
+            if production:
+                _validate_production_sbid_evaluation(sbid_group, sbid_prefix, datasets)
+    if production and dataset_count < 1:
+        raise ManifestValidationError(
+            "setonix-production mode requires at least one dataset"
+        )
     return manifest
 
 
@@ -474,13 +595,18 @@ def validate_manifest(manifest: dict) -> dict:
 #     print(f"Checksum verified: {os.path.basename(filepath)}")
 
 
-def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
+def _flatten_sources_to_dataset_rows(
+    manifest: dict,
+    validation_mode: ManifestValidationMode | str = (
+        ManifestValidationMode.SETONIX_PRODUCTION
+    ),
+) -> list:
     """
     Flatten manifest sources[].sbids[].datasets[] into a list of dataset rows.
     Each row has name, ra_string, dec_string, vsys, evaluation_file, staged_url,
     checksum_url, evaluation_file_url, evaluation_file_checksum_url.
     """
-    validate_manifest(manifest)
+    validate_manifest(manifest, validation_mode)
     rows = []
     sources = manifest.get("sources") or []
     for src in sources:
@@ -567,7 +693,12 @@ def _build_csv_string_from_dataset_rows(rows: list) -> str:
     return buf.getvalue()
 
 
-def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
+def prestage_manifest_inputs(
+    manifest_bytes: bytes,
+    validation_mode: ManifestValidationMode | str = (
+        ManifestValidationMode.SETONIX_PRODUCTION
+    ),
+) -> tuple:
     """
     Parse manifest JSON; download only credentials (casda.ini); build csv_string and
     URL lists from sources/datasets. Returns 4-tuple for manifest-driven pipeline.
@@ -575,8 +706,9 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
     Manifest format (preferred): inputs.credentials_ini_url; sources[] (nested) or
     datasets[] (flat). See wallaby-hires-beampipe/manifest_schema.md.
 
-    Legacy: if sources/datasets absent, uses inputs.input_csv_url (content as csv_string)
-    and staged.ms_urls / staged.eval_urls.
+    Setonix production admission is the default. Legacy and URL-optional
+    manifests require :func:`prestage_manifest_inputs_no_download` or an explicit
+    ``structural-no-download`` validation mode.
 
     Returns
     -------
@@ -584,7 +716,8 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
         (credentials_path, csv_string, ms_urls_json, eval_urls_json)
     """
     manifest = json.loads(manifest_bytes.decode("utf-8"))
-    validate_manifest(manifest)
+    mode = _coerce_manifest_validation_mode(validation_mode)
+    validate_manifest(manifest, mode)
     inputs = manifest.get("inputs") or {}
     staged = manifest.get("staged") or {}
 
@@ -594,7 +727,7 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
     if cred_url:
         _download_url_to_path(cred_url, credentials_path)
 
-    rows = _flatten_sources_to_dataset_rows(manifest)
+    rows = _flatten_sources_to_dataset_rows(manifest, mode)
     if rows:
         csv_string = _build_csv_string_from_dataset_rows(rows)
         ms_urls = [
@@ -608,12 +741,17 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
             for r in rows
             if r.get("staged_url")
         ]
-        seen_eval: set[str] = set()
+        seen_eval: set[tuple[str, str, str]] = set()
         eval_urls = []
         for r in rows:
             url = r.get("evaluation_file_url") or ""
-            if url and url not in seen_eval:
-                seen_eval.add(url)
+            eval_key = (
+                r.get("source_identifier") or "",
+                r.get("sbid") or "",
+                url,
+            )
+            if url and eval_key not in seen_eval:
+                seen_eval.add(eval_key)
                 eval_urls.append(
                     {
                         "url": url,
@@ -622,6 +760,15 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
                         "source_identifier": r.get("source_identifier") or "",
                         "sbid": r.get("sbid") or "",
                     }
+                )
+        if mode is ManifestValidationMode.SETONIX_PRODUCTION:
+            expected_eval_count = sum(
+                len(source.get("sbids") or []) for source in manifest["sources"]
+            )
+            if len(ms_urls) != len(rows) or len(eval_urls) != expected_eval_count:
+                raise ManifestValidationError(
+                    "setonix-production manifest did not produce one visibility URL "
+                    "per dataset and one evaluation URL per SBID"
                 )
     else:
         # Legacy: download input_csv and use its content; use staged URL lists
@@ -649,6 +796,14 @@ def prestage_manifest_inputs(manifest_bytes: bytes) -> tuple:
         csv_string,
         json.dumps(ms_urls),
         json.dumps(eval_urls),
+    )
+
+
+def prestage_manifest_inputs_no_download(manifest_bytes: bytes) -> tuple:
+    """Pre-stage with the explicit structural/no-download admission policy."""
+    return prestage_manifest_inputs(
+        manifest_bytes,
+        validation_mode=ManifestValidationMode.STRUCTURAL_NO_DOWNLOAD,
     )
 
 
@@ -1150,10 +1305,10 @@ def _eval_calibration_tar_wanted_member(info: tarfile.TarInfo) -> bool:
         return False
     if info.isdir():
         return False
-    # Match .../LinmosBeamImages/<something>.fits
+    # Match exactly one non-empty .../LinmosBeamImages/<something>.cube.fits.
     if "/LinmosBeamImages/" not in name and not name.startswith("LinmosBeamImages/"):
         return False
-    return name.lower().endswith(".fits")
+    return info.size > 0 and name.lower().endswith(".cube.fits")
 
 
 # Function to un-tar files
@@ -1161,6 +1316,7 @@ def untar_file(
     tar_file: str,
     output_dir: str = ".",
     member_filter: Optional[Callable[[tarfile.TarInfo], bool]] = None,
+    expected_member_count: Optional[int] = None,
 ):
     """
     Extracts a tar file (.tar, .tar.gz, .tar.bz2) to the specified output directory.
@@ -1191,6 +1347,14 @@ def untar_file(
             if not to_extract:
                 raise ManifestDownloadError(
                     f"No matching members in archive {os.path.basename(tar_file)!r}"
+                )
+            if (
+                expected_member_count is not None
+                and len(to_extract) != expected_member_count
+            ):
+                raise ManifestDownloadError(
+                    f"Expected exactly {expected_member_count} matching member(s) in "
+                    f"archive {os.path.basename(tar_file)!r}; found {len(to_extract)}"
                 )
             with tempfile.TemporaryDirectory(
                 prefix=".beampipe-extract-", dir=output_dir
@@ -1294,7 +1458,7 @@ def _normalize_evaluation_layout(path: str) -> None:
         return
     target_dir = _safe_join(path, "LinmosBeamImages")
     candidates = glob.glob(
-        os.path.join(path, "**", "LinmosBeamImages", "*.fits"), recursive=True
+        os.path.join(path, "**", "LinmosBeamImages", "*.cube.fits"), recursive=True
     )
     for candidate in candidates:
         if not os.path.isfile(candidate) or os.path.getsize(candidate) <= 0:
@@ -1324,10 +1488,17 @@ def _normalize_evaluation_layout(path: str) -> None:
 
 def _evaluation_already_extracted(path: str) -> bool:
     _normalize_evaluation_layout(path)
-    return any(
-        os.path.isfile(candidate) and os.path.getsize(candidate) > 0
-        for candidate in glob.glob(os.path.join(path, "LinmosBeamImages", "*.fits"))
-    )
+    candidates = [
+        candidate
+        for candidate in glob.glob(os.path.join(path, "LinmosBeamImages", "*.cube.fits"))
+        if os.path.isfile(candidate) and os.path.getsize(candidate) > 0
+    ]
+    if len(candidates) > 1:
+        raise ManifestDownloadError(
+            "Expected exactly one non-empty LinmosBeamImages/*.cube.fits file; "
+            f"found {len(candidates)}"
+        )
+    return bool(candidates)
 
 
 def degrees_to_hms(degrees: float) -> tuple:
@@ -1782,11 +1953,16 @@ def download_data_eval(
                 f"{os.path.basename(path)!r}"
             )
         # Avoid unpacking multi-GB calibration tarballs: only LinmosBeamImages FITS.
-        untar_file(path, extract_root, member_filter=_eval_calibration_tar_wanted_member)
+        untar_file(
+            path,
+            extract_root,
+            member_filter=_eval_calibration_tar_wanted_member,
+            expected_member_count=1,
+        )
         if not _evaluation_already_extracted(extract_root):
             raise ManifestDownloadError(
                 f"Evaluation archive {os.path.basename(path)!r} did not produce a "
-                "non-empty LinmosBeamImages FITS file"
+                "single non-empty LinmosBeamImages/*.cube.fits file"
             )
     print("Evaluation files downloaded (from manifest URLs)")
 

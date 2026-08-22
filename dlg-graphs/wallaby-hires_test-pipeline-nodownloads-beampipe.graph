@@ -7319,8 +7319,8 @@
             "fields": [
                 {
                     "name": "func_name",
-                    "value": "wallaby_hires.prestage_manifest_inputs",
-                    "defaultValue": "wallaby_hires.read_and_process_csv",
+                    "value": "wallaby_hires.prestage_manifest_inputs_no_download",
+                    "defaultValue": "wallaby_hires.prestage_manifest_inputs_no_download",
                     "description": "Python function name",
                     "readonly": false,
                     "type": "String",
