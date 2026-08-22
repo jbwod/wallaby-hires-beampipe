@@ -14,6 +14,7 @@ import glob
 import hashlib
 import io
 import json
+import math
 
 # Importing required modules
 import os
@@ -371,8 +372,14 @@ def validate_manifest(manifest: dict) -> dict:
             if not str(source.get(required_field) or "").strip():
                 raise ManifestValidationError(f"{prefix}.{required_field} is required")
         vsys = source.get("vsys")
-        if isinstance(vsys, bool) or not isinstance(vsys, (int, float)):
+        if vsys is None or isinstance(vsys, bool):
             raise ManifestValidationError(f"{prefix}.vsys must be a number")
+        try:
+            numeric_vsys = float(vsys)
+        except (TypeError, ValueError):
+            raise ManifestValidationError(f"{prefix}.vsys must be a number")
+        if not math.isfinite(numeric_vsys):
+            raise ManifestValidationError(f"{prefix}.vsys must be a finite number")
 
         sbids = source.get("sbids")
         if not isinstance(sbids, list) or not sbids:
@@ -403,14 +410,39 @@ def validate_manifest(manifest: dict) -> dict:
                 dataset_prefix = f"{sbid_prefix}.datasets[{dataset_index}]"
                 if not isinstance(dataset, dict):
                     raise ManifestValidationError(f"{dataset_prefix} must be an object")
-                _safe_download_filename(dataset.get("name"), f"{dataset_prefix}.name")
-                _validate_remote_url(
-                    dataset.get("staged_url"), f"{dataset_prefix}.staged_url"
+                dataset_name = (
+                    dataset.get("name")
+                    or dataset.get("dataset_id")
+                    or dataset.get("visibility_filename")
                 )
+                _safe_download_filename(dataset_name, f"{dataset_prefix}.name")
+                staged_url = dataset.get("staged_url")
+                if staged_url:
+                    _validate_remote_url(staged_url, f"{dataset_prefix}.staged_url")
                 dataset_checksum_url = dataset.get("checksum_url")
                 if dataset_checksum_url:
                     _validate_remote_url(
                         dataset_checksum_url, f"{dataset_prefix}.checksum_url"
+                    )
+                dataset_evaluation_file = dataset.get("evaluation_file")
+                if dataset_evaluation_file:
+                    _safe_download_filename(
+                        dataset_evaluation_file,
+                        f"{dataset_prefix}.evaluation_file",
+                    )
+                dataset_evaluation_url = dataset.get("evaluation_file_url")
+                if dataset_evaluation_url:
+                    _validate_remote_url(
+                        dataset_evaluation_url,
+                        f"{dataset_prefix}.evaluation_file_url",
+                    )
+                dataset_evaluation_checksum_url = dataset.get(
+                    "evaluation_file_checksum_url"
+                )
+                if dataset_evaluation_checksum_url:
+                    _validate_remote_url(
+                        dataset_evaluation_checksum_url,
+                        f"{dataset_prefix}.evaluation_file_checksum_url",
                     )
     return manifest
 
@@ -464,7 +496,11 @@ def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
                 sbid_group.get("evaluation_file_checksum_url") or ""
             )
             for ds in sbid_group.get("datasets") or []:
-                name = ds["name"]
+                name = (
+                    ds.get("name")
+                    or ds.get("dataset_id")
+                    or ds.get("visibility_filename")
+                )
                 rows.append(
                     {
                         "source_identifier": source_identifier,
@@ -473,11 +509,17 @@ def _flatten_sources_to_dataset_rows(manifest: dict) -> list:
                         "ra_string": ra or ds.get("ra_string") or "",
                         "dec_string": dec or ds.get("dec_string") or "",
                         "vsys": vsys if vsys is not None else ds.get("vsys"),
-                        "evaluation_file": evaluation_file,
+                        "evaluation_file": evaluation_file
+                        or ds.get("evaluation_file")
+                        or "",
                         "staged_url": ds.get("staged_url") or "",
                         "checksum_url": ds.get("checksum_url") or "",
-                        "evaluation_file_url": evaluation_file_url,
-                        "evaluation_file_checksum_url": evaluation_file_checksum_url,
+                        "evaluation_file_url": evaluation_file_url
+                        or ds.get("evaluation_file_url")
+                        or "",
+                        "evaluation_file_checksum_url": evaluation_file_checksum_url
+                        or ds.get("evaluation_file_checksum_url")
+                        or "",
                     }
                 )
     return rows

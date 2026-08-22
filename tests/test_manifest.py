@@ -57,6 +57,42 @@ def test_nested_manifest_flattens_and_preserves_download_names():
     assert json.loads(evaluation_json)[0]["name"] == "evaluation.tar"
 
 
+def test_core_dataset_shape_and_numeric_string_normalize_for_graph():
+    document = manifest()
+    source = document["sources"][0]
+    source["vsys"] = "668.0"
+    sbid = source["sbids"][0]
+    evaluation_file = sbid.pop("evaluation_file")
+    evaluation_url = sbid.pop("evaluation_file_url")
+    evaluation_checksum_url = sbid.pop("evaluation_file_checksum_url")
+    dataset = sbid["datasets"][0]
+    dataset["dataset_id"] = dataset.pop("name")
+    dataset["evaluation_file"] = evaluation_file
+    dataset["evaluation_file_url"] = evaluation_url
+    dataset["evaluation_file_checksum_url"] = evaluation_checksum_url
+
+    rows = _flatten_sources_to_dataset_rows(document)
+    _, csv_text, ms_json, evaluation_json = prestage_manifest_inputs(
+        json.dumps(document).encode()
+    )
+
+    assert rows[0]["name"].endswith(".ms.tar")
+    assert rows[0]["evaluation_file"] == "evaluation.tar"
+    assert json.loads(ms_json)[0]["name"].endswith(".ms.tar")
+    assert json.loads(evaluation_json)[0]["name"] == "evaluation.tar"
+    assert "668.0" in csv_text
+
+
+def test_nodownload_manifest_does_not_require_staged_url():
+    document = manifest()
+    document["sources"][0]["sbids"][0]["datasets"][0].pop("staged_url")
+
+    _, csv_text, ms_json, _ = prestage_manifest_inputs(json.dumps(document).encode())
+
+    assert "beam25" in csv_text
+    assert json.loads(ms_json) == []
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [

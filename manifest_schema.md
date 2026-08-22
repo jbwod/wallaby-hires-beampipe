@@ -42,8 +42,13 @@ Validation rules:
 - `source_identifier` and `sbid` must each be one portable filesystem component;
   absolute paths, separators, traversal components, and control characters are
   rejected.
-- `ra_string`, `dec_string`, and numeric `vsys` are required for every source.
-- Every dataset requires a safe basename in `name` and an HTTP(S) `staged_url`.
+- `ra_string`, `dec_string`, and finite numeric `vsys` are required for every
+  source. `vsys` may be a JSON number or Core's numeric-string representation.
+- Every dataset requires a safe basename in `name`, `dataset_id`, or
+  `visibility_filename`. `staged_url` is required by download graphs but may be
+  absent from no-download test manifests.
+- Evaluation filename/URL/checksum fields may be present on their shared SBID
+  object or repeated on Core's dataset records; both forms normalize identically.
 - Evaluation and checksum URLs, when supplied, must use HTTP(S).
 - The legacy `inputs.input_csv_url` plus `staged` URL-list shape is accepted only
   when `sources` is absent. It is retained for old graphs and should not be used by
