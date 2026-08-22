@@ -217,7 +217,7 @@ with `/daliuge/.venv/bin/python` in every container. Installing with an
 unqualified `pip`, installing into only one manager, or using a separate
 `--prefix` does not make the module importable by all graph executors. A PyPI
 install is valid only after that exact release exists, and should be version
-pinned, for example `wallaby-hires==0.1.5`.
+pinned, for example `wallaby-hires==0.1.6`.
 
 The complete source-install and pinned-wheel procedures, local REST topology,
 Setonix prerequisites, security checklist, verification steps, and troubleshooting
@@ -227,8 +227,8 @@ The repository `Containerfile` builds a Python 3.10 utility image whose entrypoi
 is the validation CLI. It does not replace the DALiuGE engine:
 
 ```bash
-docker build -f Containerfile -t wallaby-hires:0.1.5 .
-docker run --rm wallaby-hires:0.1.5 --version
+docker build -f Containerfile -t wallaby-hires:0.1.6 .
+docker run --rm wallaby-hires:0.1.6 --version
 ```
 
 ## Related links

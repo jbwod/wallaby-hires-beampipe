@@ -1,7 +1,7 @@
 # Operator runbook
 
 This runbook covers package deployment, DALiuGE connectivity, staging, Setonix
-preflight, and end-to-end verification. Commands use package version `0.1.5`; use
+preflight, and end-to-end verification. Commands use package version `0.1.6`; use
 the version pinned by the graph/deployment when that changes.
 
 ## Validation status
@@ -78,7 +78,7 @@ install the same artifact everywhere:
 ```bash
 python3 -m build --wheel
 python3 -m twine check dist/*
-sha256sum dist/wallaby_hires-0.1.5-py3-none-any.whl
+sha256sum dist/wallaby_hires-0.1.6-py3-none-any.whl
 ```
 
 Copy the wheel into each DALiuGE container, then run:
@@ -86,13 +86,13 @@ Copy the wheel into each DALiuGE container, then run:
 ```bash
 /daliuge/.venv/bin/python -m pip install \
   --disable-pip-version-check --force-reinstall --no-deps \
-  /tmp/wallaby_hires-0.1.5-py3-none-any.whl
+  /tmp/wallaby_hires-0.1.6-py3-none-any.whl
 ```
 
 For an offline cluster, build and hash the wheel on a connected build host, move it
 through the site's approved artifact path, and verify the hash before installation.
 A PyPI install is appropriate only when the release exists and is pinned, for
-example `wallaby-hires==0.1.5`.
+example `wallaby-hires==0.1.6`.
 
 `docker exec` installs are development state and disappear when a container is
 recreated. Production should bake the hash-pinned wheel into one pinned DALiuGE
@@ -107,13 +107,13 @@ base image and use that derived image for every manager and node service.
     <li>
       <span class="bp-flow__eyebrow">Trusted build environment</span>
       <strong>Versioned source</strong>
-      <span><code>wallaby-hires 0.1.5</code></span>
+      <span><code>wallaby-hires 0.1.6</code></span>
       <small>Supported Python and a reviewed commit</small>
     </li>
     <li>
       <span class="bp-flow__eyebrow">One immutable artifact</span>
       <strong>Wheel plus SHA-256</strong>
-      <span><code>wallaby_hires-0.1.5-py3-none-any.whl</code></span>
+      <span><code>wallaby_hires-0.1.6-py3-none-any.whl</code></span>
       <small>Build once; verify before distribution</small>
     </li>
     <li class="bp-flow__fanout">
