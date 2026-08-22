@@ -396,6 +396,10 @@ def resolve_staging_root(
         return ""
 
     expanded_root = os.path.expandvars(raw_root)
+    if any(character in expanded_root for character in ("\x00", "\n", "\r", ",", ":")):
+        raise ManifestValidationError(
+            "WALLABY_HIRES_STAGING_ROOT contains an unsafe bind-path character"
+        )
     if "$" in expanded_root or not os.path.isabs(expanded_root):
         raise ManifestValidationError(
             "WALLABY_HIRES_STAGING_ROOT must be an absolute expanded path"
@@ -427,7 +431,7 @@ def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
 
 
 def _validate_production_sbid_evaluation(
-    sbid_group: dict, sbid_prefix: str, datasets: list
+    sbid_group: dict, sbid_prefix: str, datasets: list, sbid: str
 ) -> None:
     """Require one consistently described evaluation archive for an SBID."""
     effective_values = {}
@@ -456,9 +460,15 @@ def _validate_production_sbid_evaluation(
     evaluation_file = _safe_download_filename(
         effective_values["evaluation_file"], f"{sbid_prefix}.evaluation_file"
     )
-    if not evaluation_file.endswith(".tar"):
+    expected_archive = re.compile(
+        rf"calibration-metadata-processing-logs-SB{re.escape(sbid)}_"
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.tar\Z"
+    )
+    if expected_archive.fullmatch(evaluation_file) is None:
         raise ManifestValidationError(
-            f"{sbid_prefix}.evaluation_file must name a .tar archive"
+            f"{sbid_prefix}.evaluation_file must match "
+            "calibration-metadata-processing-logs-"
+            f"SB{sbid}_YYYY-MM-DD-HHMMSS.tar exactly"
         )
     _validate_https_url(
         effective_values["evaluation_file_url"],
@@ -598,7 +608,9 @@ def validate_manifest(
                         f"{dataset_prefix}.evaluation_file_checksum_url",
                     )
             if production:
-                _validate_production_sbid_evaluation(sbid_group, sbid_prefix, datasets)
+                _validate_production_sbid_evaluation(
+                    sbid_group, sbid_prefix, datasets, sbid
+                )
     if production and dataset_count < 1:
         raise ManifestValidationError(
             "setonix-production mode requires at least one dataset"

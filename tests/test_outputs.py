@@ -101,9 +101,9 @@ def test_cli_validates_manifest_and_outputs(tmp_path, capsys, monkeypatch):
                 "sbids": [
                     {
                         "sbid": "34166",
-                        "evaluation_file": "evaluation.tar",
-                        "evaluation_file_url": "https://example.test/evaluation.tar",
-                        "evaluation_file_checksum_url": "https://example.test/evaluation.tar.checksum",
+                        "evaluation_file": "calibration-metadata-processing-logs-SB34166_2021-12-31-011733.tar",
+                        "evaluation_file_url": "https://example.test/calibration-metadata-processing-logs-SB34166_2021-12-31-011733.tar",
+                        "evaluation_file_checksum_url": "https://example.test/calibration-metadata-processing-logs-SB34166_2021-12-31-011733.tar.checksum",
                         "datasets": [
                             {
                                 "name": "beam.ms.tar",

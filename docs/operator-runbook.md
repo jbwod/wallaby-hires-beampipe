@@ -177,8 +177,12 @@ translation, session creation, terminal status, and an empty error-drop list.
 ## Shared staging workspace
 
 `download_data_ms`, `download_data_eval`, `process_CSV_str`, and the ASKAPsoft
-commands must resolve the same workspace. Set an absolute, non-root, execution-
-specific shared path in every DALiuGE manager/node environment:
+commands must resolve the same workspace. For Core-managed runs, Core owns this
+value: it derives an absolute, non-root path for each execution below the DALiuGE
+session workspace and exports that same value to the outer allocation and every
+DALiuGE manager/node process. Do not configure one static service-wide staging
+root. A standalone qualification may set its own disposable, execution-specific
+path:
 
 ```bash
 export WALLABY_HIRES_STAGING_ROOT=/shared/wallaby/beampipe/<execution-id>
@@ -237,15 +241,17 @@ it is unnecessary.
 
 ## Setonix preflight
 
-The current graph assumes the Setonix `work` partition, `sbatch`, `srun`,
-`/scratch`, `/group/askap/modulefiles`, and the
-`singularity/4.1.0-askap` module. It also requires these variables in the
-environment of the **remote DALiuGE manager and app processes**:
+The current graph assumes the Setonix `work` partition, `sbatch`, `squeue`,
+`sacct`, `scontrol`, `scancel`, `srun`, `/scratch`, `/group/askap/modulefiles`, and the
+`singularity/4.1.0-askap` module. It also requires the account and image variables
+below in the environment of the **remote DALiuGE manager and app processes**.
+Core-managed runs additionally provide the per-execution
+`WALLABY_HIRES_STAGING_ROOT`; verify it from the launch receipt rather than
+overriding it with static operator configuration.
 
 ```bash
 export BEAMPIPE_SLURM_ACCOUNT=your-approved-allocation
 export BEAMPIPE_ASKAPSOFT_SIF=/immutable/shared/path/askapsoft.sif
-export WALLABY_HIRES_STAGING_ROOT=/scratch/your-allocation/your-user/beampipe/<execution-id>
 ```
 
 The account and SIF path are deployment configuration, not graph content. The SIF
@@ -256,6 +262,9 @@ the imcontsub, linmos, and mosaic commands call `singularity` directly:
 ```bash
 module use /group/askap/modulefiles
 module load singularity/4.1.0-askap
+for command in sbatch squeue sacct scontrol scancel srun; do
+  command -v "$command"
+done
 test -n "$BEAMPIPE_SLURM_ACCOUNT"
 test -r "$BEAMPIPE_ASKAPSOFT_SIF"
 test -w "$WALLABY_HIRES_STAGING_ROOT"
@@ -267,6 +276,37 @@ Install and import-check the pinned Wallaby wheel in the remote DALiuGE Python
 environment, then repeat the import from an allocated compute node. Confirm the
 allocation, partition, module version, bind paths, and a minimal site-approved
 Singularity/SLURM smoke job before submitting science data.
+
+### Nested imager job ownership
+
+Scatter creates one nested imager job per flattened dataset, not one per source.
+Each default child requests `work`, one node, two tasks, one CPU per task, 12 GB,
+and 20 minutes. The checked-in one-source fixture contains six datasets, so it
+would request six independently scheduled children: up to six concurrent nodes,
+12 tasks, 72 GB aggregate memory, and 120 node-minutes of requested time.
+
+The `run-setonix-imager` controller submits with `sbatch --parsable --hold` and
+creates a mode-0700 `.beampipe-imager.<random>` directory below the beam
+workspace. It accepts exactly one final parsable receipt; if a site banner makes
+that receipt unusable, it recovers exactly one still-held job by the pre-recorded
+unique session/beam name. Zero or multiple matches fail closed and remain held for
+operator review. The controller writes the exact `child-job-id` (`job-id` or
+`job-id;cluster`) before releasing the job. Other mode-0600 evidence includes the
+unique name, copied parset, batch script, Slurm logs, release marker, and final
+`state|exit-code`.
+
+HUP, INT, TERM, scheduler-query failure, and accounting failure request `scancel`
+for only that validated child ID. Success is reported only after `squeue` confirms
+the ID absent; an unconfirmed cancellation is a fatal error with durable
+`child-job-cancel-failure` evidence. Never clean up with `scancel -u`, a job-name
+wildcard, or an unverified ID.
+
+SIGKILL, compute-node loss, and power loss cannot run a process-local trap. An
+attended qualification must therefore record every emitted
+`BEAMPIPE_CHILD_JOB_ID` and inspect the exact lifecycle directories before outer
+cleanup. Unattended production remains blocked until the deployment control plane
+or a least-privilege reaper consumes those IDs and cancels any child whose outer
+DALiuGE execution is no longer live.
 
 Beampipe must fetch the graph from an immutable commit URL or verify its configured
 SHA-256. EAGLE's `repoBranch` metadata is not an execution pin. Do not use legacy
@@ -303,6 +343,8 @@ or component graphs as a production substitute.
 | Unsafe filename, archive member, path segment, or URL | The input violates the security boundary. Correct or reject the manifest/archive rather than repeatedly retrying it. |
 | Evaluation archive produced zero or multiple PB cubes | The archive must contain exactly one non-empty `LinmosBeamImages/*.cube.fits` member for the selected SBID. Correct the evaluation artifact. |
 | `BEAMPIPE_* are required`, `singularity: command not found`, unreadable SIF, or invalid Slurm account | Fix the environment inherited by remote DALiuGE apps, load the required module, and validate the allocation/SIF on a compute node. |
+| Held imager receipt could not be resolved | Read `child-submission-unresolved`, query the exact recorded job name, and resolve every matching held job before continuing. Do not release an ambiguous match. |
+| Outer execution stopped but a child may remain | Read only its validated `child-job-id` evidence, query that exact ID, and cancel that exact ID if still live. Do not select jobs by user or name. |
 | Permission denied, `ENOSPC`, or unexplained extraction failure | Confirm the same writable shared staging mount on every node and check both bytes and inodes. |
 | No-download run succeeds but products are empty | Expected: Python stubs create zero-byte placeholders. This graph cannot satisfy output verification. |
 | `no outputs matched` or `output is empty` | The output root/naming is wrong, ASKAPsoft did not create science products, or a test graph was used. Do not publish or report success. |

@@ -17,6 +17,12 @@ from .outputs import (
     publish_output_inventory,
     verify_output_inventory,
 )
+from .slurm import (
+    SlurmImagerResources,
+    SlurmInterrupted,
+    SlurmLifecycleError,
+    run_setonix_imager,
+)
 
 
 def package_version() -> str:
@@ -88,6 +94,20 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("inventory", type=Path)
     publish.add_argument("destination_root", type=Path)
 
+    setonix_imager = commands.add_parser(
+        "run-setonix-imager",
+        help="submit and supervise one nested Setonix imager job",
+    )
+    setonix_imager.add_argument("--workdir", type=Path, required=True)
+    setonix_imager.add_argument("--config", type=Path, required=True)
+    setonix_imager.add_argument("--partition", default="work")
+    setonix_imager.add_argument("--nodes", type=int, default=1)
+    setonix_imager.add_argument("--ntasks", type=int, default=2)
+    setonix_imager.add_argument("--ntasks-per-node", type=int, default=2)
+    setonix_imager.add_argument("--cpus-per-task", type=int, default=1)
+    setonix_imager.add_argument("--memory", default="12G")
+    setonix_imager.add_argument("--time-limit", default="00:20:00")
+
     return parser
 
 
@@ -132,9 +152,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 arguments.inventory,
             )
             print(json.dumps(document, sort_keys=True))
+        elif arguments.command == "run-setonix-imager":
+            resources = SlurmImagerResources(
+                partition=arguments.partition,
+                nodes=arguments.nodes,
+                ntasks=arguments.ntasks,
+                ntasks_per_node=arguments.ntasks_per_node,
+                cpus_per_task=arguments.cpus_per_task,
+                memory=arguments.memory,
+                time_limit=arguments.time_limit,
+            )
+            run_setonix_imager(
+                arguments.workdir,
+                arguments.config,
+                resources=resources,
+            )
         else:  # pragma: no cover - argparse requires one of the commands
             parser.error("a command is required")
-    except (OSError, ValueError, OutputValidationError) as error:
+    except SlurmInterrupted as error:
+        print(f"wallaby_hires: {error}", file=sys.stderr)
+        return 128 + error.signal_number
+    except (OSError, ValueError, OutputValidationError, SlurmLifecycleError) as error:
         print(f"wallaby_hires: {error}", file=sys.stderr)
         return 2
     return 0

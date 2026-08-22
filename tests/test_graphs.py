@@ -78,10 +78,35 @@ def test_setonix_graph_uses_deployment_managed_account_and_image():
     values = _field_values(SETONIX_GRAPH)
     commands = "\n".join(value for value in values if isinstance(value, str))
 
-    assert "BEAMPIPE_SLURM_ACCOUNT" in commands
-    assert commands.count("BEAMPIPE_ASKAPSOFT_SIF") >= 4
+    assert "exec wallaby_hires run-setonix-imager" in commands
+    assert "sbatch --wait" not in commands
+    assert commands.count("BEAMPIPE_ASKAPSOFT_SIF") >= 3
     assert "pawsey0411" not in commands
     assert "jblackwood" not in commands
+
+
+def test_one_source_fixture_has_an_explicit_nested_imager_budget():
+    manifest = json.loads(MANIFEST_FIXTURE.read_text(encoding="utf-8"))
+    dataset_count = sum(
+        len(sbid["datasets"])
+        for source in manifest["sources"]
+        for sbid in source["sbids"]
+    )
+    values = _field_values(SETONIX_GRAPH)
+    command = next(
+        value
+        for value in values
+        if isinstance(value, str) and "run-setonix-imager" in value
+    )
+
+    assert len(manifest["sources"]) == 1
+    assert dataset_count == 6
+    assert "--partition work" in command
+    assert "--nodes 1" in command
+    assert "--ntasks 2" in command
+    assert "--cpus-per-task 1" in command
+    assert "--memory 12G" in command
+    assert "--time-limit 00:20:00" in command
 
 
 def test_setonix_graph_closes_runtime_and_inventory_over_one_root():

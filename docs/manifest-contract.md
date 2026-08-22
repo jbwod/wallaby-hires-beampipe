@@ -20,9 +20,9 @@ shared by every dataset in that scheduling block.
       "sbids": [
         {
           "sbid": "32736",
-          "evaluation_file": "SB32736_eval.tar",
-          "evaluation_file_url": "https://data.example.test/SB32736_eval.tar",
-          "evaluation_file_checksum_url": "https://data.example.test/SB32736_eval.tar.checksum",
+          "evaluation_file": "calibration-metadata-processing-logs-SB32736_2025-04-21-063210.tar",
+          "evaluation_file_url": "https://data.example.test/calibration-metadata-processing-logs-SB32736_2025-04-21-063210.tar",
+          "evaluation_file_checksum_url": "https://data.example.test/calibration-metadata-processing-logs-SB32736_2025-04-21-063210.tar.checksum",
           "datasets": [
             {
               "name": "HIPASSJ1318-21_SB32736_F00_B01.ms.tar",
@@ -63,9 +63,9 @@ string for `vsys`, and evaluation fields repeated on each dataset. This is one
           "visibility_filename": "HIPASSJ1318-21_SB32736_F00_B01.ms.tar",
           "staged_url": "https://data.example.test/beam.ms.tar",
           "checksum_url": "https://data.example.test/beam.ms.tar.checksum",
-          "evaluation_file": "SB32736_eval.tar",
-          "evaluation_file_url": "https://data.example.test/SB32736_eval.tar",
-          "evaluation_file_checksum_url": "https://data.example.test/SB32736_eval.tar.checksum"
+          "evaluation_file": "calibration-metadata-processing-logs-SB32736_2025-04-21-063210.tar",
+          "evaluation_file_url": "https://data.example.test/calibration-metadata-processing-logs-SB32736_2025-04-21-063210.tar",
+          "evaluation_file_checksum_url": "https://data.example.test/calibration-metadata-processing-logs-SB32736_2025-04-21-063210.tar.checksum"
         }
       ]
     }
@@ -90,8 +90,9 @@ Run fail-closed Setonix production validation with the exact runtime interpreter
 `prestage_manifest_inputs` default. It enforces all structural rules plus:
 
 - exactly one source and at least one dataset;
-- one evaluation `.tar` archive description per SBID, either on the SBID or
-  repeated identically on every dataset in that SBID;
+- one evaluation archive description per SBID, either on the SBID or repeated
+  identically on every dataset in that SBID; its case-sensitive basename must be
+  `calibration-metadata-processing-logs-SB<exact-sbid>_YYYY-MM-DD-HHMMSS.tar`;
 - a required HTTPS `staged_url` and HTTPS `checksum_url` for every visibility
   dataset;
 - required HTTPS evaluation archive and checksum URLs for every SBID; and

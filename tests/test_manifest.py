@@ -16,6 +16,8 @@ from wallaby_hires.funcs import (
     validate_manifest,
 )
 
+EVALUATION_NAME = "calibration-metadata-processing-logs-SB34166_2021-12-31-011733.tar"
+
 
 def manifest() -> dict:
     return {
@@ -29,9 +31,9 @@ def manifest() -> dict:
                 "sbids": [
                     {
                         "sbid": "34166",
-                        "evaluation_file": "evaluation.tar",
-                        "evaluation_file_url": "https://example.test/evaluation.tar?token=secret",
-                        "evaluation_file_checksum_url": "https://example.test/evaluation.tar.checksum",
+                        "evaluation_file": EVALUATION_NAME,
+                        "evaluation_file_url": f"https://example.test/{EVALUATION_NAME}?token=secret",
+                        "evaluation_file_checksum_url": f"https://example.test/{EVALUATION_NAME}.checksum",
                         "datasets": [
                             {
                                 "name": "HIPASSJ1318-21_A_beam25_10arc_split.ms.tar",
@@ -60,7 +62,7 @@ def test_nested_manifest_flattens_and_preserves_download_names():
     assert credentials.endswith("inputs/casda.ini")
     assert "HIPASSJ1318-21_A_beam25_10arc_split.ms.tar" in csv_text
     assert json.loads(ms_json)[0]["name"].endswith(".ms.tar")
-    assert json.loads(evaluation_json)[0]["name"] == "evaluation.tar"
+    assert json.loads(evaluation_json)[0]["name"] == EVALUATION_NAME
 
 
 def test_core_dataset_shape_and_numeric_string_normalize_for_graph():
@@ -83,9 +85,9 @@ def test_core_dataset_shape_and_numeric_string_normalize_for_graph():
     )
 
     assert rows[0]["name"].endswith(".ms.tar")
-    assert rows[0]["evaluation_file"] == "evaluation.tar"
+    assert rows[0]["evaluation_file"] == EVALUATION_NAME
     assert json.loads(ms_json)[0]["name"].endswith(".ms.tar")
-    assert json.loads(evaluation_json)[0]["name"] == "evaluation.tar"
+    assert json.loads(evaluation_json)[0]["name"] == EVALUATION_NAME
     assert "668.0" in csv_text
 
 
@@ -185,10 +187,41 @@ def test_setonix_production_rejects_conflicting_evaluation_archive_metadata():
         validate_manifest(document)
 
 
+@pytest.mark.parametrize(
+    "archive_name",
+    [
+        "metadata-processing-logs-SB34166_2021-12-31-011733.tar",
+        "calibration-metadata-processing-logs-SB34275_2021-12-31-011733.tar",
+    ],
+)
+def test_setonix_production_rejects_wrong_evaluation_archive_identity(archive_name):
+    document = manifest()
+    document["sources"][0]["sbids"][0]["evaluation_file"] = archive_name
+
+    with pytest.raises(ManifestValidationError, match="must match.*SB34166"):
+        validate_manifest(document)
+
+
+def test_structural_no_download_keeps_generic_evaluation_archive_compatibility():
+    document = manifest()
+    document["sources"][0]["sbids"][0]["evaluation_file"] = "evaluation.tar"
+
+    assert (
+        validate_manifest(document, ManifestValidationMode.STRUCTURAL_NO_DOWNLOAD)
+        is document
+    )
+
+
 def test_setonix_prestage_emits_one_evaluation_download_per_sbid():
     document = manifest()
     second = copy.deepcopy(document["sources"][0]["sbids"][0])
     second["sbid"] = "34275"
+    second_name = "calibration-metadata-processing-logs-SB34275_2022-01-06-132301.tar"
+    second["evaluation_file"] = second_name
+    second["evaluation_file_url"] = f"https://example.test/{second_name}"
+    second["evaluation_file_checksum_url"] = (
+        f"https://example.test/{second_name}.checksum"
+    )
     document["sources"][0]["sbids"].append(second)
 
     _, _, _, evaluation_json = prestage_manifest_inputs(json.dumps(document).encode())
@@ -263,6 +296,10 @@ def test_production_staging_root_is_required_absolute_and_consistent(
 
     monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", "/")
     with pytest.raises(ManifestValidationError, match="cannot be the filesystem root"):
+        resolve_staging_root()
+
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", "/scratch/unsafe:bind")
+    with pytest.raises(ManifestValidationError, match="unsafe bind-path"):
         resolve_staging_root()
 
     root = tmp_path / "execution"
