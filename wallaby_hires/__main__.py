@@ -13,6 +13,7 @@ from .funcs import ManifestValidationMode, validate_manifest
 from .outputs import (
     OutputValidationError,
     build_output_inventory,
+    build_staging_output_inventory,
     publish_output_inventory,
     verify_output_inventory,
 )
@@ -65,6 +66,17 @@ def _parser() -> argparse.ArgumentParser:
         help="required glob; repeat for multiple product classes",
     )
 
+    staging_inventory = commands.add_parser(
+        "inventory-staging-outputs",
+        help="validate products in WALLABY_HIRES_STAGING_ROOT",
+    )
+    staging_inventory.add_argument(
+        "--pattern",
+        action="append",
+        dest="patterns",
+        help="required glob; repeat for multiple product classes",
+    )
+
     verify = commands.add_parser("verify-inventory", help="re-hash an output inventory")
     verify.add_argument("output_root", type=Path)
     verify.add_argument("inventory", type=Path)
@@ -102,6 +114,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             if patterns is not None:
                 kwargs["patterns"] = patterns
             document = build_output_inventory(arguments.output_root, **kwargs)
+            print(json.dumps(document, sort_keys=True))
+        elif arguments.command == "inventory-staging-outputs":
+            patterns = tuple(arguments.patterns) if arguments.patterns else None
+            kwargs = {}
+            if patterns is not None:
+                kwargs["patterns"] = patterns
+            document = build_staging_output_inventory(**kwargs)
             print(json.dumps(document, sort_keys=True))
         elif arguments.command == "verify-inventory":
             document = verify_output_inventory(arguments.output_root, arguments.inventory)

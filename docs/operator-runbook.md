@@ -177,16 +177,17 @@ translation, session creation, terminal status, and an empty error-drop list.
 ## Shared staging workspace
 
 `download_data_ms`, `download_data_eval`, `process_CSV_str`, and the ASKAPsoft
-commands must resolve the same workspace. Set an absolute shared path in every
-DALiuGE manager/node environment:
+commands must resolve the same workspace. Set an absolute, non-root, execution-
+specific shared path in every DALiuGE manager/node environment:
 
 ```bash
-export WALLABY_HIRES_STAGING_ROOT=/shared/wallaby/beampipe
+export WALLABY_HIRES_STAGING_ROOT=/shared/wallaby/beampipe/<execution-id>
 ```
 
-If it is unset, the package falls back to each app's current working directory;
-that is unsafe for a multi-container or multi-node deployment unless DALiuGE
-guarantees the same shared session directory. The nested layout is:
+The Setonix production entry points fail before data access when it is missing,
+relative, resolves to `/`, or disagrees with the graph's staging DirectoryDROP.
+Legacy/no-download helpers retain their explicit compatibility behaviour. The
+nested production layout is:
 
 ```text
 <staging-root>/<source_identifier>/<sbid>/beamNN/<dataset>.ms
@@ -244,7 +245,7 @@ environment of the **remote DALiuGE manager and app processes**:
 ```bash
 export BEAMPIPE_SLURM_ACCOUNT=your-approved-allocation
 export BEAMPIPE_ASKAPSOFT_SIF=/immutable/shared/path/askapsoft.sif
-export WALLABY_HIRES_STAGING_ROOT=/scratch/your-allocation/your-user/beampipe
+export WALLABY_HIRES_STAGING_ROOT=/scratch/your-allocation/your-user/beampipe/<execution-id>
 ```
 
 The account and SIF path are deployment configuration, not graph content. The SIF
@@ -281,8 +282,9 @@ or component graphs as a production substitute.
 5. Translate, create the session, deploy, and poll until a terminal state.
 6. Require terminal success **and** no error drops; retain the session identifiers
    and sanitized poll evidence.
-7. For production, verify non-empty final image and weights, publish them, re-hash
-   the destination, and submit the trusted Core report described in
+7. For production, retain the graph-created `wallaby-output-inventory.json`,
+   publish its non-empty image and weights, re-hash the destination, and submit
+   the trusted Core report described in
    [output integrity](output-integrity.md).
 8. Confirm Core records the output-inventory artifact and terminal success. A
    scheduler/DALiuGE success alone is insufficient when output verification is
@@ -295,6 +297,7 @@ or component graphs as a production substitute.
 | `ModuleNotFoundError: wallaby_hires` | The package was installed with the wrong interpreter or is absent on that executor. Check version and `wallaby_hires.__file__` using `/daliuge/.venv/bin/python` in all four local containers. |
 | TM translation succeeds, then a PyFunc fails on an NM | Package versions differ across services, or only manager containers were updated. Redeploy one pinned image/wheel everywhere. |
 | Production manifest admission rejects a URL or archive field | Restage the inputs and supply the required HTTPS visibility/evaluation URLs and checksum URLs. Use `structural-no-download` only with the no-download graph. |
+| Production rejects `WALLABY_HIRES_STAGING_ROOT` | Set one absolute, non-root, execution-specific shared path identically for DALiuGE and every compute node; do not rely on cwd. |
 | HTTP 403 from a staged URL | The signed URL probably expired. Obtain a newly staged manifest unless a completed local MS/evaluation tree satisfies the documented retry marker. |
 | Checksum mismatch or incomplete download | Do not bypass validation. Quarantine the affected archive/staging directory, obtain fresh staging evidence, and retry in a clean target. |
 | Unsafe filename, archive member, path segment, or URL | The input violates the security boundary. Correct or reject the manifest/archive rather than repeatedly retrying it. |

@@ -9,7 +9,10 @@ from wallaby_hires.funcs import (
     _flatten_sources_to_dataset_rows,
     prestage_manifest_inputs,
     prestage_manifest_inputs_no_download,
+    process_CSV_mosaic_str_setonix,
     process_CSV_str,
+    process_CSV_str_setonix,
+    resolve_staging_root,
     validate_manifest,
 )
 
@@ -245,3 +248,45 @@ def test_csv_path_identifiers_cannot_escape_workspace():
 
     with pytest.raises(ManifestValidationError, match="path segment"):
         process_CSV_str(csv_text)
+
+
+def test_production_staging_root_is_required_absolute_and_consistent(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("WALLABY_HIRES_STAGING_ROOT", raising=False)
+    with pytest.raises(ManifestValidationError, match="is required"):
+        resolve_staging_root()
+
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", "relative/workspace")
+    with pytest.raises(ManifestValidationError, match="must be an absolute"):
+        resolve_staging_root()
+
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", "/")
+    with pytest.raises(ManifestValidationError, match="cannot be the filesystem root"):
+        resolve_staging_root()
+
+    root = tmp_path / "execution"
+    other = tmp_path / "other"
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", str(root))
+    assert resolve_staging_root() == str(root.resolve())
+    with pytest.raises(ManifestValidationError, match="does not match"):
+        resolve_staging_root(str(other))
+
+
+def test_setonix_parsets_use_the_one_configured_root(tmp_path, monkeypatch):
+    root = tmp_path / "execution"
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", str(root))
+    csv_text = (
+        "Name,RA_string,Dec_string,Vsys,,evaluation_file,source_identifier,sbid\n"
+        "source_A_beam25_split.ms.tar,1h,2.0,3,,"
+        "LinmosBeamImages/pb.cube.fits,source,34166\n"
+    )
+
+    parsets = process_CSV_str_setonix(csv_text)
+    mosaic = json.loads(process_CSV_mosaic_str_setonix(csv_text))
+
+    assert parsets[0]["Cimager.dataset"] == (
+        f'"{root.resolve()}/source/34166/beam25/source_A_beam25_split.ms"'
+    )
+    assert parsets[0]["Cimager.beam_root"] == (f"{root.resolve()}/source/34166/beam25")
+    assert mosaic[0]["linmos.outname"].startswith("source/image.")

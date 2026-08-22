@@ -43,7 +43,7 @@
             "fields": [
                 {
                     "name": "func_name",
-                    "value": "wallaby_hires.process_CSV_str",
+                    "value": "wallaby_hires.process_CSV_str_setonix",
                     "defaultValue": "wallaby_hires.read_and_process_csv",
                     "description": "Python function name",
                     "readonly": false,
@@ -434,7 +434,7 @@
             "fields": [
                 {
                     "name": "func_name",
-                    "value": "wallaby_hires.process_CSV_mosaic_str",
+                    "value": "wallaby_hires.process_CSV_mosaic_str_setonix",
                     "defaultValue": "wallaby_hires.read_and_process_csv_mosaic",
                     "description": "Python function name",
                     "readonly": false,
@@ -8234,7 +8234,7 @@
                 },
                 {
                     "name": "dirname",
-                    "value": "$DLG_ROOT/wallaby_staging_data/",
+                    "value": "$WALLABY_HIRES_STAGING_ROOT",
                     "defaultValue": "",
                     "description": "Directory name/path",
                     "readonly": false,
@@ -8415,7 +8415,7 @@
                 },
                 {
                     "name": "dirname",
-                    "value": "$DLG_ROOT/wallaby_staging_data/",
+                    "value": "$WALLABY_HIRES_STAGING_ROOT",
                     "defaultValue": "",
                     "description": "Directory name/path",
                     "readonly": false,
@@ -8522,7 +8522,7 @@
             "fields": [
                 {
                     "name": "func_name",
-                    "value": "wallaby_hires.extract_beam_root",
+                    "value": "wallaby_hires.extract_beam_root_setonix",
                     "defaultValue": "",
                     "description": "Python function name",
                     "readonly": false,
@@ -9588,7 +9588,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "test -n \"$BEAMPIPE_ASKAPSOFT_SIF\" || exit 2; cd {beam_root}; singularity exec --bind $PWD:/askapbuffer \"$BEAMPIPE_ASKAPSOFT_SIF\" imcontsub -c {c}",
+                    "value": "test -n \"$BEAMPIPE_ASKAPSOFT_SIF\" || exit 2; cd \"{beam_root}\"; singularity exec --bind \"$PWD:/askapbuffer\" \"$BEAMPIPE_ASKAPSOFT_SIF\" imcontsub -c \"{c}\"",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -9919,7 +9919,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "test -n \"$BEAMPIPE_ASKAPSOFT_SIF\" || exit 2; cd {beam_root}; singularity exec --bind $PWD:/askapbuffer \"$BEAMPIPE_ASKAPSOFT_SIF\" linmos -c {c}",
+                    "value": "test -n \"$BEAMPIPE_ASKAPSOFT_SIF\" || exit 2; cd \"{beam_root}\"; singularity exec --bind \"$PWD:/askapbuffer\" \"$BEAMPIPE_ASKAPSOFT_SIF\" linmos -c \"{c}\"",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,
@@ -10249,7 +10249,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "test -n \"$BEAMPIPE_ASKAPSOFT_SIF\" || exit 2; singularity exec --bind $PWD:/askapbuffer \"$BEAMPIPE_ASKAPSOFT_SIF\" linmos -c {c}",
+                    "value": "set -eu\ntest -n \"$BEAMPIPE_ASKAPSOFT_SIF\" || { echo \"BEAMPIPE_ASKAPSOFT_SIF is required\" >&2; exit 2; }\nROOT=\"${WALLABY_HIRES_STAGING_ROOT:-}\"\ncase \"$ROOT\" in /*) ;; *) echo \"WALLABY_HIRES_STAGING_ROOT must be absolute\" >&2; exit 2;; esac\ntest \"$ROOT\" != / || { echo \"WALLABY_HIRES_STAGING_ROOT cannot be /\" >&2; exit 2; }\ncd \"$ROOT\"\nCONFIG=$(mktemp \"$ROOT/.beampipe-mosaic.XXXXXX.in\")\ncleanup_config() { rm -f -- \"$CONFIG\"; }\ntrap cleanup_config EXIT\ntrap 'exit 129' HUP\ntrap 'exit 130' INT\ntrap 'exit 143' TERM\ncp -- \"{c}\" \"$CONFIG\"\nsingularity exec --bind \"$ROOT:/askapbuffer\" --pwd /askapbuffer \"$BEAMPIPE_ASKAPSOFT_SIF\" linmos -c \"/askapbuffer/${CONFIG##*/}\"\nwallaby_hires inventory-staging-outputs",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,

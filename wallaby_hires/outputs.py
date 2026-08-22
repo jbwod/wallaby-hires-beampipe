@@ -234,3 +234,20 @@ def verify_output_products(
         inventory_path or str(Path(output_root) / "wallaby-output-inventory.json"),
     )
     return json.dumps(inventory, separators=(",", ":"), sort_keys=True)
+
+
+def build_staging_output_inventory(
+    patterns: Sequence[str] = DEFAULT_OUTPUT_PATTERNS,
+    inventory_path: str | os.PathLike[str] | None = None,
+) -> dict:
+    """Validate final products only in the configured production workspace."""
+    # Local import avoids coupling the generic output module to manifest parsing at
+    # import time while keeping one authoritative root validator.
+    from .funcs import resolve_staging_root
+
+    root = Path(resolve_staging_root())
+    return build_output_inventory(
+        root,
+        patterns=patterns,
+        inventory_path=inventory_path or root / "wallaby-output-inventory.json",
+    )

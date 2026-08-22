@@ -61,6 +61,10 @@ def _field_values(path):
     ]
 
 
+def _graph_nodes(path):
+    return json.loads(path.read_text(encoding="utf-8"))["nodeDataArray"]
+
+
 def test_docker_askapsoft_images_are_immutable():
     values = _field_values(DOCKER_GRAPH)
 
@@ -78,6 +82,24 @@ def test_setonix_graph_uses_deployment_managed_account_and_image():
     assert commands.count("BEAMPIPE_ASKAPSOFT_SIF") >= 4
     assert "pawsey0411" not in commands
     assert "jblackwood" not in commands
+
+
+def test_setonix_graph_closes_runtime_and_inventory_over_one_root():
+    values = _field_values(SETONIX_GRAPH)
+    nodes = _graph_nodes(SETONIX_GRAPH)
+    mosaic = next(node for node in nodes if node["name"] == "singularity linmos/mosiac")
+    mosaic_command = next(
+        field["value"] for field in mosaic["fields"] if field["name"] == "command"
+    )
+
+    assert values.count("$WALLABY_HIRES_STAGING_ROOT") == 2
+    assert "$DLG_ROOT/wallaby_staging_data/" not in values
+    assert "wallaby_hires.process_CSV_str_setonix" in values
+    assert "wallaby_hires.process_CSV_mosaic_str_setonix" in values
+    assert "wallaby_hires.extract_beam_root_setonix" in values
+    assert 'cd "$ROOT"' in mosaic_command
+    assert "--pwd /askapbuffer" in mosaic_command
+    assert "wallaby_hires inventory-staging-outputs" in mosaic_command
 
 
 def test_no_download_graph_selects_structural_manifest_admission_explicitly():

@@ -374,7 +374,10 @@ def _infer_hash_algo_from_hex(expected_hex: str) -> str:
     return "md5"
 
 
-def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
+def resolve_staging_root(
+    staging_root: Optional[str] = None, *, required: bool = True
+) -> str:
+    """Resolve and validate the one shared WALLABY execution workspace."""
     if staging_root is None:
         staging_root = ""
     staging_root = _peel_dlg_port_to_str_or_tuple(staging_root)
@@ -382,10 +385,45 @@ def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
         staging_root = ""
     if isinstance(staging_root, tuple):
         staging_root = str(staging_root)
-    staging_root = str(staging_root).strip()
-    if staging_root:
-        return staging_root
-    return os.environ.get("WALLABY_HIRES_STAGING_ROOT", "").strip()
+    explicit_root = str(staging_root).strip()
+    environment_root = os.environ.get("WALLABY_HIRES_STAGING_ROOT", "").strip()
+    raw_root = explicit_root or environment_root
+    if not raw_root:
+        if required:
+            raise ManifestValidationError(
+                "WALLABY_HIRES_STAGING_ROOT is required for production execution"
+            )
+        return ""
+
+    expanded_root = os.path.expandvars(raw_root)
+    if "$" in expanded_root or not os.path.isabs(expanded_root):
+        raise ManifestValidationError(
+            "WALLABY_HIRES_STAGING_ROOT must be an absolute expanded path"
+        )
+    resolved_root = os.path.realpath(expanded_root)
+    if resolved_root == os.path.sep:
+        raise ManifestValidationError(
+            "WALLABY_HIRES_STAGING_ROOT cannot be the filesystem root"
+        )
+
+    if explicit_root and environment_root:
+        expanded_environment_root = os.path.expandvars(environment_root)
+        if "$" in expanded_environment_root or not os.path.isabs(
+            expanded_environment_root
+        ):
+            raise ManifestValidationError(
+                "WALLABY_HIRES_STAGING_ROOT must be an absolute expanded path"
+            )
+        if os.path.realpath(expanded_environment_root) != resolved_root:
+            raise ManifestValidationError(
+                "staging_root input does not match WALLABY_HIRES_STAGING_ROOT"
+            )
+    return resolved_root
+
+
+def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
+    """Compatibility resolver for legacy/no-download functions."""
+    return resolve_staging_root(staging_root, required=False)
 
 
 def _validate_production_sbid_evaluation(
@@ -1021,7 +1059,9 @@ def parset_mixing(static_parset: dict, dynamic_parset, prefix: str = "") -> str:
     return serialp
 
 
-def extract_beam_root(dynamic_parset, prefix: str) -> str:
+def extract_beam_root(
+    dynamic_parset, prefix: str, staging_root: Optional[str] = None
+) -> str:
     prefix = (prefix or "").strip()
     tolist = getattr(dynamic_parset, "tolist", None)
     if callable(tolist):
@@ -1052,7 +1092,9 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     if not beam_root:
         return ""
 
-    allowed_root = os.path.abspath(_resolve_staging_root_arg(None) or os.getcwd())
+    allowed_root = resolve_staging_root(staging_root, required=False) or os.path.abspath(
+        os.getcwd()
+    )
     # Make absolute inside the DALiuGE session workspace.
     if not os.path.isabs(beam_root):
         beam_root = _safe_join(allowed_root, beam_root)
@@ -1071,6 +1113,11 @@ def extract_beam_root(dynamic_parset, prefix: str) -> str:
     if not out_dir.endswith(os.sep):
         out_dir = out_dir + os.sep
     return out_dir
+
+
+def extract_beam_root_setonix(dynamic_parset, prefix: str) -> str:
+    """Resolve a beam directory strictly below the production staging root."""
+    return extract_beam_root(dynamic_parset, prefix, staging_root=resolve_staging_root())
 
 
 # Code to download files from casda
@@ -1747,8 +1794,7 @@ def download_data_ms(
     if not ms_urls_json:
         raise ValueError("manifest input required; ms_urls_json must be provided")
     raw = json.loads(ms_urls_json)
-    staging_root = _resolve_staging_root_arg(staging_root)
-    workspace_root = os.path.abspath(staging_root or os.getcwd())
+    workspace_root = resolve_staging_root(staging_root)
     items = []
     for u in raw:
         if isinstance(u, str):
@@ -1891,8 +1937,7 @@ def download_data_eval(
     if not eval_urls_json:
         raise ValueError("manifest input required; eval_urls_json must be provided")
     raw = json.loads(eval_urls_json)
-    staging_root = _resolve_staging_root_arg(staging_root)
-    workspace_root = os.path.abspath(staging_root or os.getcwd())
+    workspace_root = resolve_staging_root(staging_root)
     items = []
     for u in raw:
         if isinstance(u, str):
@@ -2125,7 +2170,7 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_CSV_str(csv_string: str) -> list:
+def process_CSV_str(csv_string: str, staging_root: Optional[str] = None) -> list:
     """
     Processes a CSV string into a list of parset dicts, then returns **pickle
     bytes** of that list.
@@ -2208,9 +2253,9 @@ def process_CSV_str(csv_string: str) -> list:
                 source_identifier, "CSV source_identifier"
             )
             sbid = _safe_path_segment(sbid, "CSV sbid")
-            workspace_root = os.path.abspath(
-                _resolve_staging_root_arg(None) or os.getcwd()
-            )
+            workspace_root = resolve_staging_root(
+                staging_root, required=False
+            ) or os.path.abspath(os.getcwd())
             beam_root = _safe_join(workspace_root, source_identifier, sbid, beam_dir)
             dataset_path = os.path.join(beam_root, ms_dir)
             eval_rel = str(evaluation_file).lstrip("/").strip()
@@ -2272,6 +2317,11 @@ def process_CSV_str(csv_string: str) -> list:
         print("Dynamic parsets for imager, imcontsub and linmos created")
 
     return data
+
+
+def process_CSV_str_setonix(csv_string: str) -> list:
+    """Build production parsets under the required shared staging root."""
+    return process_CSV_str(csv_string, staging_root=resolve_staging_root())
 
 
 def process_CSV_mosaic_str(csv_string: str) -> bytes:
@@ -2364,3 +2414,9 @@ def process_CSV_mosaic_str(csv_string: str) -> bytes:
         print("Warning: CSV data is empty.")
 
     return json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def process_CSV_mosaic_str_setonix(csv_string: str) -> bytes:
+    """Build a production mosaic parset after validating the shared root."""
+    resolve_staging_root()
+    return process_CSV_mosaic_str(csv_string)

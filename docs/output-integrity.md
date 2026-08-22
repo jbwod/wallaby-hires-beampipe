@@ -150,8 +150,8 @@ acknowledges publication and must protect its superuser credential.
 
 <figure class="bp-diagram" aria-labelledby="output-trust-flow-title">
   <figcaption id="output-trust-flow-title">
-    <strong>Required production target state; not currently graph-wired or
-    completed live.</strong> Core accepts a publication report only after the
+    <strong>Required production target state; publication/reporting is not yet
+    graph-wired or completed live.</strong> Core accepts a publication report only after the
     trusted publisher has re-hashed the durable destination.
   </figcaption>
   <ol class="bp-flow bp-flow--publication">
@@ -162,7 +162,7 @@ acknowledges publication and must protect its superuser credential.
       <small>Scheduler success alone is insufficient</small>
     </li>
     <li class="bp-flow__gap">
-      <span class="bp-flow__eyebrow">Required graph integration</span>
+      <span class="bp-flow__eyebrow">Setonix graph postcondition</span>
       <strong>Wallaby verifier</strong>
       <span>Paths, sizes, product SHA-256 values</span>
       <small><code>inventory_sha256</code> covers canonical products only</small>
@@ -191,25 +191,27 @@ acknowledges publication and must protect its superuser credential.
   </p>
   <p class="bp-diagram__note">
     Core does not read the durable store. The authenticated publisher's verified
-    acknowledgement is the storage trust root. The mosaic-to-verifier connection
-    shown here is required production wiring and is not yet present in the graph.
+    acknowledgement is the storage trust root. The Setonix graph now creates the
+    local inventory after mosaic; publication and authenticated reporting remain
+    outside the graph.
   </p>
 </figure>
 
-## Current graph gap
+## Remaining publication and reporting gap
 
-The current EAGLE production graphs do not yet place
-`verify_output_products` downstream of the real ASKAPsoft mosaic node. The
-no-download graph intentionally creates zero-byte placeholders and sets output
-verification to `required: false`; it cannot be used as output evidence.
+The Setonix production graph invokes `inventory-staging-outputs` only after the
+real ASKAPsoft mosaic command succeeds. That command requires the configured
+absolute staging root, rejects absent/empty image or weights products, and writes
+`wallaby-output-inventory.json` there. The no-download graph intentionally creates
+zero-byte placeholders and sets output verification to `required: false`; it
+cannot be used as output evidence.
 
 Before Beampipe treats a production execution as successful, deployment must:
 
-1. invoke the verifier only after a successful real mosaic;
-2. persist the local inventory in the execution's evidence boundary;
-3. publish to durable storage and re-hash the destination;
-4. construct and submit the authenticated Core report; and
-5. verify that Core records the `output_inventory` artifact and terminal output
+1. retain and independently validate the graph-created local inventory;
+2. publish to durable storage and re-hash the destination;
+3. construct and submit the authenticated Core report; and
+4. verify that Core records the `output_inventory` artifact and terminal output
    state.
 
 Until that wiring exists and has completed live, scheduler/DALiuGE completion is

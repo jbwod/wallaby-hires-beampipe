@@ -6,6 +6,7 @@ from wallaby_hires.__main__ import main
 from wallaby_hires.outputs import (
     OutputValidationError,
     build_output_inventory,
+    build_staging_output_inventory,
     publish_output_inventory,
     verify_output_inventory,
     verify_output_products,
@@ -79,7 +80,17 @@ def test_daliuge_wrapper_writes_machine_readable_inventory(tmp_path):
     assert (tmp_path / "wallaby-output-inventory.json").is_file()
 
 
-def test_cli_validates_manifest_and_outputs(tmp_path, capsys):
+def test_staging_inventory_is_closed_over_environment_root(tmp_path, monkeypatch):
+    _products(tmp_path)
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", str(tmp_path))
+
+    document = build_staging_output_inventory()
+
+    assert document["pattern_counts"]
+    assert (tmp_path / "wallaby-output-inventory.json").is_file()
+
+
+def test_cli_validates_manifest_and_outputs(tmp_path, capsys, monkeypatch):
     manifest = {
         "sources": [
             {
@@ -117,4 +128,8 @@ def test_cli_validates_manifest_and_outputs(tmp_path, capsys):
 
     _products(tmp_path / "outputs")
     assert main(["inventory-outputs", str(tmp_path / "outputs")]) == 0
+    assert json.loads(capsys.readouterr().out)["products"]
+
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", str(tmp_path / "outputs"))
+    assert main(["inventory-staging-outputs"]) == 0
     assert json.loads(capsys.readouterr().out)["products"]
