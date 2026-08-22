@@ -1,2 +1,7 @@
 site_name: wallaby_hires
 theme: readthedocs
+nav:
+  - Home: index.md
+  - Operator runbook: operator-runbook.md
+  - Manifest contract: manifest-contract.md
+  - Output integrity: output-integrity.md

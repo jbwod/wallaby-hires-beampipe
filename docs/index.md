@@ -1,17 +1,17 @@
-# Welcome to MkDocs
+# WALLABY hi-res Beampipe operations
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+This documentation describes how to deploy and verify the `wallaby_hires` DALiuGE
+components. Start with the operator runbook; it records both the procedure and the
+boundary of the live end-to-end evidence.
 
-## Commands
+- [Operator runbook](operator-runbook.md) — package deployment, local DALiuGE,
+  Setonix prerequisites, staging, security, verification, and troubleshooting.
+- [Execution manifest contract](manifest-contract.md) — production and
+  no-download shapes, normalization, and validation.
+- [Output integrity and publication](output-integrity.md) — the Wallaby inventory,
+  the extended Beampipe Core report, and the trusted-publisher boundary.
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
-
-## Project layout
-
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+The repository [README](https://github.com/jbwod/wallaby-hires-beampipe) contains
+the science overview and graph catalogue. Only the current `*-beampipe.graph`
+files should be considered deployment candidates; legacy, historical, and
+component graphs are examples, not production configuration.

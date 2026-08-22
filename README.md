@@ -55,14 +55,16 @@ The earlier hi-res path was a manually invoked script (not under version control
 
 - Workflows are built and edited with the **[EAGLE](https://eagle-dlg.readthedocs.io/)** graphical editor; sessions can be submitted to a laptop, **Hyades**, or **Setonix**.
 - The graph downloads required data from **CASDA** (or consumes Beampipe-staged URLs), prepares ASKAPsoft parameter sets, runs **cimager**, **imcontsub**, and **linmos** per beam, then **mosaics** beam cubes into a single output and weight image.
-- Main ASKAPsoft steps run in **Docker** or **Singularity** containers (ASKAPsoft team / Pawsey images); on Setonix we use site Singularity (`askapsoft_1.23.0-mpich.sif`) with the beam directory bind-mounted.
+- Main ASKAPsoft steps run in **Docker** or **Singularity** containers (ASKAPsoft
+  team / Pawsey images); on Setonix the current graph resolves an immutable,
+  deployment-managed SIF and bind-mounts the beam directory.
 
 ### Test and deployment graph versions
 
 | | **Test graphs** | **Deploy / Beampipe graphs** |
 |---|-----------------|------------------------------|
 | **imager / imcontsub / linmos / mosaic** | Python functions `imager()`, `imcontsub()`, `linmos()`, `mosaic()` | ASKAPsoft binaries in Singularity (production) |
-| **Downloads** | Optional `*-nodownloads-*` variants | Full manifest / CASDA staging |
+| **Downloads** | `*-nodownloads-*` omits both download apps | Full manifest / CASDA staging |
 | **Typical use** | CI, logic checks, Hyades | Setonix production under Beampipe |
 
 Legacy deploy graphs used the `icrar/yanda_imager:0.4` Docker image; current **`*-beampipe.graph`** targets Pawsey Singularity and the layout described below.
@@ -80,7 +82,9 @@ metadata describes where the graph is edited and is not an execution pin.
 
 ## Pipeline architecture
 
-> End-to-end, production ready flow under Beampipe: manifest ⮕ staging ⮕ scatter per beam ⮕ imager / imcontsub / linmos ⮕ mosaic.
+> Production-shaped processing flow under Beampipe: manifest ⮕ staging ⮕ scatter
+> per beam ⮕ imager / imcontsub / linmos ⮕ mosaic. Durable output verification and
+> publication remain a required integration boundary.
 
 <p align="center">
   <img src="images/new-graph.png" alt="WALLABY hi-res Beampipe DALiuGE graph" width="900" />
@@ -158,7 +162,16 @@ Graphs live under [`dlg-graphs/`](dlg-graphs/). **Prefer `*-beampipe.graph` for 
 | [`imcontsub.graph`](dlg-graphs/imcontsub.graph) | imcontsub only |
 | [`imager-parset.graph`](dlg-graphs/imager-parset.graph) | Imager / parset experiments |
 
-Both test and deploy variants have been exercised on local REST DIM and **Setonix**.
+Only current `*-beampipe.graph` files are deployment candidates. Component,
+legacy, and historical graphs contain experimental assumptions and are not an
+operator runbook.
+
+The no-download test graph has been exercised end to end against a live local
+DALiuGE REST deployment. The current Setonix graph has been statically validated,
+but this revision has **not** completed a live Setonix/SLURM science run because an
+allocation and deployment-managed SIF were unavailable. See the
+[operator runbook](docs/operator-runbook.md#validation-status) for the exact
+evidence boundary.
 
 ## Python package (`wallaby_hires`)
 
@@ -177,38 +190,35 @@ DALiuGE **PyFunc** entry points (see [`wallaby_hires/__init__.py`](wallaby_hires
 | `imager` / `imcontsub` / `linmos` / `mosaic` | graph stubs |
 
 Example manifest shape: [`wallaby_hires/test_staging_e2e_manifest.json`](wallaby_hires/test_staging_e2e_manifest.json).
+The accepted Beampipe/Core variants and the different no-download contract are
+documented in the [manifest contract](docs/manifest-contract.md).
 
 Output verification and the remaining production publisher/Core integration are
 documented in [`docs/output-integrity.md`](docs/output-integrity.md).
 
 ## Installation
 
-There are several installation options depending on whether the DALiuGE engine runs in a **virtual environment** on the host or inside a **Docker** container. You can install from **PyPI** (when released) or from a clone of this repository.
+Package metadata supports Python 3.10 through 3.13; CI exercises 3.10 and 3.12.
+The distribution name is `wallaby-hires`, while the import package and command are
+`wallaby_hires`. Poetry is not required at runtime.
 
-Python 3.10 through 3.13 is supported. The repository `Makefile` uses ordinary
-PEP 517/pip commands; Poetry is not required by a DALiuGE runtime installation.
-
-### Engine in a virtual environment
-
-```bash
-pip install wallaby_hires
-```
-
-This requires a release on PyPI. From a clone:
+Install with the **same interpreter that executes DALiuGE PyFunc apps**. For the
+standard DALiuGE containers used by the local E2E, that command is:
 
 ```bash
-make install
+make PYTHON=/daliuge/.venv/bin/python install
 ```
 
-`make install` deliberately force-reinstalls the built package so `/daliuge`
-runtime setup cannot retain an older editable checkout or wheel. Contributors can
-use `make install-dev` and `make check` for the full lint/test/build gate.
+Run it in `dlg-tm`, `dlg-dim`, `dlg-nm1`, and `dlg-nm2`, then verify the package
+with `/daliuge/.venv/bin/python` in every container. Installing with an
+unqualified `pip`, installing into only one manager, or using a separate
+`--prefix` does not make the module importable by all graph executors. A PyPI
+install is valid only after that exact release exists, and should be version
+pinned, for example `wallaby-hires==0.1.5`.
 
-### Engine inside a DALiuGE container
-
-```bash
-docker exec -t daliuge-engine bash -c 'pip install --prefix=$DLG_ROOT/code wallaby_hires'
-```
+The complete source-install and pinned-wheel procedures, local REST topology,
+Setonix prerequisites, security checklist, verification steps, and troubleshooting
+are in the [operator runbook](docs/operator-runbook.md).
 
 The repository `Containerfile` builds a Python 3.10 utility image whose entrypoint
 is the validation CLI. It does not replace the DALiuGE engine:
