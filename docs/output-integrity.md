@@ -148,6 +148,54 @@ Core validates report shape and acknowledgement but cannot read the destination.
 The trusted publisher is responsible for re-hashing durable objects before it
 acknowledges publication and must protect its superuser credential.
 
+<figure class="bp-diagram" aria-labelledby="output-trust-flow-title">
+  <figcaption id="output-trust-flow-title">
+    <strong>Required production target state; not currently graph-wired or
+    completed live.</strong> Core accepts a publication report only after the
+    trusted publisher has re-hashed the durable destination.
+  </figcaption>
+  <ol class="bp-flow bp-flow--publication">
+    <li>
+      <span class="bp-flow__eyebrow">DALiuGE runtime</span>
+      <strong>Real ASKAPsoft mosaic</strong>
+      <span>Non-empty image and weights</span>
+      <small>Scheduler success alone is insufficient</small>
+    </li>
+    <li class="bp-flow__gap">
+      <span class="bp-flow__eyebrow">Required graph integration</span>
+      <strong>Wallaby verifier</strong>
+      <span>Paths, sizes, product SHA-256 values</span>
+      <small><code>inventory_sha256</code> covers canonical products only</small>
+    </li>
+    <li class="bp-flow__publisher">
+      <span class="bp-flow__eyebrow">Trusted publisher boundary</span>
+      <strong>Verify, publish, then read back</strong>
+      <span>Validate the source inventory before copying</span>
+      <div class="bp-durable-store">
+        <span class="bp-durable-store__arrow" aria-hidden="true">⇅</span>
+        <strong>Approved durable store</strong>
+        <small>Atomic copy, destination re-hash, publication receipt</small>
+      </div>
+      <small>Add the durable URI and acknowledge only after hashes match</small>
+    </li>
+    <li>
+      <span class="bp-flow__eyebrow">Beampipe Core</span>
+      <strong>Authenticated verify report</strong>
+      <span>Validate schema, auth, digest, URI, acknowledgement</span>
+      <small>Artifact SHA-256 covers the whole report; resolve output state</small>
+    </li>
+  </ol>
+  <p class="bp-stop-branch">
+    <strong>Stop branch:</strong> no-download stubs produce zero-byte placeholders
+    → not output evidence → do not publish or submit a Core verification report.
+  </p>
+  <p class="bp-diagram__note">
+    Core does not read the durable store. The authenticated publisher's verified
+    acknowledgement is the storage trust root. The mosaic-to-verifier connection
+    shown here is required production wiring and is not yet present in the graph.
+  </p>
+</figure>
+
 ## Current graph gap
 
 The current EAGLE production graphs do not yet place

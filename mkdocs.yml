@@ -1,5 +1,7 @@
 site_name: wallaby_hires
 theme: readthedocs
+extra_css:
+  - stylesheets/diagrams.css
 nav:
   - Home: index.md
   - Operator runbook: operator-runbook.md

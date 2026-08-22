@@ -23,7 +23,9 @@ This is built on the work presented the original [wallaby-hires](https://github.
 
 > - **`Idempotent staging`**: checksum validation, common data-set, skips re-download and re-untar when files or the target `.ms` directory already exist, so retries and partial reruns are safe.
 
-> - **`Test and deploy graphs`**: `*-beampipe.graph` variants run ASKAPsoft in Singularity on Setonix; `*-test-*` graphs replace imager / imcontsub / linmos / mosaic with Python stubs for fast local or CI checks.
+> - **`Test and deploy graphs`**: `*-beampipe.graph` variants are designed to run
+> ASKAPsoft in Singularity on Setonix; `*-test-*` graphs replace imager / imcontsub /
+> linmos / mosaic with Python stubs for fast local or CI checks.
 
 ## WALLABY hi-res imaging overview
 
@@ -55,9 +57,10 @@ The earlier hi-res path was a manually invoked script (not under version control
 
 - Workflows are built and edited with the **[EAGLE](https://eagle-dlg.readthedocs.io/)** graphical editor; sessions can be submitted to a laptop, **Hyades**, or **Setonix**.
 - The graph downloads required data from **CASDA** (or consumes Beampipe-staged URLs), prepares ASKAPsoft parameter sets, runs **cimager**, **imcontsub**, and **linmos** per beam, then **mosaics** beam cubes into a single output and weight image.
-- Main ASKAPsoft steps run in **Docker** or **Singularity** containers (ASKAPsoft
-  team / Pawsey images); on Setonix the current graph resolves an immutable,
-  deployment-managed SIF and bind-mounts the beam directory.
+- Main ASKAPsoft steps use **Docker** or **Singularity** containers (ASKAPsoft team /
+  Pawsey images). On Setonix the current graph reads a deployment-managed SIF path
+  and bind-mounts the beam directory; the deployment must enforce that SIF's
+  immutability.
 
 ### Test and deployment graph versions
 

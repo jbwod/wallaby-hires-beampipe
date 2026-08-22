@@ -18,9 +18,9 @@ The following path was exercised against live local services:
 
 The production Setonix/SLURM graph was **not** run live for this revision because
 the required Pawsey allocation and deployment-managed ASKAPsoft SIF were not
-available. Its graph shape, environment guards, image pinning, and tests were
-validated statically. Treat the Setonix section below as a required preflight, not
-as evidence of a completed science run.
+available. Its graph shape, environment guards, deployment-managed SIF reference,
+and tests were validated statically. Treat the Setonix section below as a required
+preflight, not as evidence of a completed science run.
 
 The local run is manual evidence, not a CI guarantee. The repository's automated
 suite validates Python, packaging, graph invariants, manifests, staging security,
@@ -97,6 +97,54 @@ example `wallaby-hires==0.1.5`.
 `docker exec` installs are development state and disappear when a container is
 recreated. Production should bake the hash-pinned wheel into one pinned DALiuGE
 base image and use that derived image for every manager and node service.
+
+<figure class="bp-diagram" aria-labelledby="package-runtime-flow-title">
+  <figcaption id="package-runtime-flow-title">
+    <strong>Package-to-runtime flow.</strong> Build and verify one wheel, then make
+    that identical artifact importable by the interpreter used by every executor.
+  </figcaption>
+  <ol class="bp-flow bp-flow--runtime">
+    <li>
+      <span class="bp-flow__eyebrow">Trusted build environment</span>
+      <strong>Versioned source</strong>
+      <span><code>wallaby-hires 0.1.5</code></span>
+      <small>Supported Python and a reviewed commit</small>
+    </li>
+    <li>
+      <span class="bp-flow__eyebrow">One immutable artifact</span>
+      <strong>Wheel plus SHA-256</strong>
+      <span><code>wallaby_hires-0.1.5-py3-none-any.whl</code></span>
+      <small>Build once; verify before distribution</small>
+    </li>
+    <li class="bp-flow__fanout">
+      <span class="bp-flow__eyebrow">Validated local topology</span>
+      <strong>Install the same wheel everywhere</strong>
+      <ul class="bp-executors" aria-label="DALiuGE services">
+        <li><code>dlg-tm</code></li>
+        <li><code>dlg-dim</code></li>
+        <li><code>dlg-nm1</code></li>
+        <li><code>dlg-nm2</code></li>
+      </ul>
+      <small>Use <code>/daliuge/.venv/bin/python</code></small>
+    </li>
+    <li>
+      <span class="bp-flow__eyebrow">Graph execution</span>
+      <strong>Control plane to executor</strong>
+      <ol class="bp-runtime-path" aria-label="Runtime sequence">
+        <li><code>TM</code> translates</li>
+        <li><code>DIM</code> deploys and schedules</li>
+        <li><code>NM</code> executes the PyFunc import</li>
+      </ol>
+      <small>Require the same package version and module path</small>
+    </li>
+  </ol>
+  <p class="bp-diagram__note">
+    <strong>Evidence boundary:</strong> live evidence covers the local no-download
+    smoke only. Setonix/SLURM science execution has preflight/static validation
+    only. Translation can succeed before a PyFunc reaches a node with a missing or
+    stale package, and this flow does not prove ASKAPsoft or non-empty outputs.
+  </p>
+</figure>
 
 ## Verify every executor
 
