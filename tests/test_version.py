@@ -3,6 +3,6 @@ from wallaby_hires.__main__ import package_version
 
 
 def test_package_and_release_versions_match():
-    assert metadata_version() == "0.1.7"
+    assert metadata_version() == "0.1.8"
     assert package_version() == metadata_version()
-    assert check_version("v0.1.7") == "0.1.7"
+    assert check_version("v0.1.8") == "0.1.8"
