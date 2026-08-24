@@ -91,7 +91,12 @@ def _runtime(tmp_path: Path):
     workdir.mkdir(parents=True)
     config = tmp_path / "dlg-session" / "imager.in"
     config.parent.mkdir()
-    config.write_text("Cimager.dataset = science.ms\n", encoding="utf-8")
+    config.write_text(
+        "Cimager.dataset = science.ms\n"
+        "Cimager.Channels = [250,0]\n"
+        "Cimager.nchanpercore = 50\n",
+        encoding="utf-8",
+    )
     sif = tmp_path / "askapsoft.sif"
     sif.write_bytes(b"sif")
     environment = {
@@ -108,15 +113,7 @@ def _runtime(tmp_path: Path):
 def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path):
     root, workdir, config, environment = _runtime(tmp_path)
     fake = FakeSlurm()
-    resources = SlurmImagerResources(
-        partition="work",
-        nodes=2,
-        ntasks=4,
-        ntasks_per_node=2,
-        cpus_per_task=3,
-        memory="24G",
-        time_limit="00:30:00",
-    )
+    resources = SlurmImagerResources()
 
     reference = run_setonix_imager(
         workdir,
@@ -132,11 +129,12 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert "--parsable" in sbatch
     assert "--hold" in sbatch
     assert "--account=project123" in sbatch
-    assert "--nodes=2" in sbatch
-    assert "--ntasks=4" in sbatch
-    assert "--cpus-per-task=3" in sbatch
-    assert "--mem=24G" in sbatch
-    assert "--time=00:30:00" in sbatch
+    assert "--nodes=1" in sbatch
+    assert "--ntasks=6" in sbatch
+    assert "--cpus-per-task=1" in sbatch
+    assert "--mem=6G" in sbatch
+    assert "--time=00:20:00" in sbatch
+    assert not any(item.startswith("--ntasks-per-node=") for item in sbatch)
     assert [call for call in fake.calls if call[0] == "scontrol"] == [
         ["scontrol", "--clusters=setonix", "release", "12345"]
     ]
@@ -150,7 +148,7 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert stat.S_IMODE((lifecycle / "child-job-id").stat().st_mode) == 0o600
     assert stat.S_IMODE((lifecycle / "imager.in").stat().st_mode) == 0o600
     script = (lifecycle / "imager-job.sh").read_text()
-    assert "srun --export=ALL -N 2 -n 4 -c 3" in script
+    assert "srun --exact --export=ALL -N 1 -n 6 --ntasks-per-node=6 -c 1" in script
     assert f"HOST_CONFIG={lifecycle / 'imager.in'}" in script
     assert 'ls -lh "${HOST_CONFIG}"' in script
     assert 'ls -lh "${CONFIG}"' not in script
@@ -201,6 +199,102 @@ def test_nested_imager_strips_parent_slurm_environment_before_sbatch(tmp_path):
     assert submission_environment["PATH"] == environment["PATH"]
     assert submission_environment["WALLABY_RUNTIME_MARKER"] == "preserved"
     assert not any(key.startswith("SLURM_") for key in submission_environment)
+
+
+def test_nested_imager_rejects_resources_larger_than_channel_work(tmp_path):
+    _root, workdir, config, environment = _runtime(tmp_path)
+    fake = FakeSlurm()
+    resources = SlurmImagerResources(ntasks=7, ntasks_per_node=7)
+
+    with pytest.raises(SlurmLifecycleError, match="expected 6"):
+        run_setonix_imager(
+            workdir,
+            config,
+            resources=resources,
+            environment=environment,
+            run_command=fake,
+        )
+
+    assert fake.calls == []
+
+
+def test_nested_imager_rejects_extra_cpus_per_task(tmp_path):
+    _root, workdir, config, environment = _runtime(tmp_path)
+    fake = FakeSlurm()
+    resources = SlurmImagerResources(cpus_per_task=2)
+
+    with pytest.raises(SlurmLifecycleError, match="one CPU per MPI task"):
+        run_setonix_imager(
+            workdir,
+            config,
+            resources=resources,
+            environment=environment,
+            run_command=fake,
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("channels", "channels_per_worker", "expected_tasks"),
+    [
+        (250, 50, 6),
+        (251, 50, 7),
+    ],
+)
+def test_nested_imager_derives_workers_plus_master_from_channels(
+    tmp_path, channels, channels_per_worker, expected_tasks
+):
+    _root, workdir, config, environment = _runtime(tmp_path)
+    config.write_text(
+        f"Cimager.Channels = [{channels},0]\n"
+        f"Cimager.nchanpercore = {channels_per_worker}\n",
+        encoding="utf-8",
+    )
+    fake = FakeSlurm()
+    resources = SlurmImagerResources(
+        ntasks=expected_tasks,
+        ntasks_per_node=expected_tasks,
+    )
+
+    run_setonix_imager(
+        workdir,
+        config,
+        resources=resources,
+        environment=environment,
+        run_command=fake,
+    )
+
+    sbatch = next(call for call in fake.calls if call[0] == "sbatch")
+    assert f"--ntasks={expected_tasks}" in sbatch
+
+
+@pytest.mark.parametrize(
+    "config_text",
+    [
+        "Cimager.nchanpercore = 50\n",
+        "Cimager.Channels = [250,0]\n",
+        (
+            "Cimager.Channels = [250,0]\n"
+            "Cimager.Channels = [250,0]\n"
+            "Cimager.nchanpercore = 50\n"
+        ),
+    ],
+)
+def test_nested_imager_rejects_ambiguous_channel_parallelism(tmp_path, config_text):
+    _root, workdir, config, environment = _runtime(tmp_path)
+    config.write_text(config_text, encoding="utf-8")
+    fake = FakeSlurm()
+
+    with pytest.raises(SlurmLifecycleError, match="must define exactly one"):
+        run_setonix_imager(
+            workdir,
+            config,
+            environment=environment,
+            run_command=fake,
+        )
+
+    assert fake.calls == []
 
 
 def test_nested_imager_rejects_an_invalid_parent_job_identifier(tmp_path):

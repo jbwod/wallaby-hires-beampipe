@@ -70,6 +70,14 @@ _RESOURCE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:+-]{0,63}\Z")
 _TIME_RE = re.compile(r"(?:\d+-)?\d{1,2}:\d{2}:\d{2}\Z")
 _SBATCH_RESULT_RE = re.compile(r"(?P<job_id>\d+)(?:;(?P<cluster>[A-Za-z0-9_.-]+))?\Z")
 _JOB_ID_RE = re.compile(r"\d+\Z")
+_CHANNELS_RE = re.compile(
+    r"^\s*Cimager\.Channels\s*=\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*(?:#.*)?$",
+    re.MULTILINE,
+)
+_NCHAN_PER_CORE_RE = re.compile(
+    r"^\s*Cimager\.nchanpercore\s*=\s*(\d+)\s*(?:#.*)?$",
+    re.MULTILINE,
+)
 _TERMINAL_STATES = {
     "BOOT_FAIL",
     "CANCELLED",
@@ -112,6 +120,48 @@ def _validate_resources(resources: SlurmImagerResources) -> None:
         raise ValueError("memory contains unsupported characters")
     if not _TIME_RE.fullmatch(resources.time_limit):
         raise ValueError("time_limit must use [[days-]hours:]minutes:seconds")
+
+
+def _required_imager_tasks(config: Path) -> int:
+    text = config.read_text(encoding="utf-8")
+    channel_matches = _CHANNELS_RE.findall(text)
+    nchan_matches = _NCHAN_PER_CORE_RE.findall(text)
+    if len(channel_matches) != 1:
+        raise SlurmLifecycleError(
+            "imager config must define exactly one numeric Cimager.Channels=[count,start]"
+        )
+    if len(nchan_matches) != 1:
+        raise SlurmLifecycleError(
+            "imager config must define exactly one positive Cimager.nchanpercore"
+        )
+    channel_count = int(channel_matches[0][0])
+    channels_per_worker = int(nchan_matches[0])
+    if channel_count < 1 or channels_per_worker < 1:
+        raise SlurmLifecycleError(
+            "Cimager channel count and nchanpercore must both be positive"
+        )
+    workers = (channel_count + channels_per_worker - 1) // channels_per_worker
+    return workers + 1
+
+
+def _validate_imager_task_envelope(resources: SlurmImagerResources, config: Path) -> None:
+    required_tasks = _required_imager_tasks(config)
+    if resources.nodes != 1:
+        raise SlurmLifecycleError("Setonix scattered imagers must use exactly one node")
+    if resources.cpus_per_task != 1:
+        raise SlurmLifecycleError(
+            "Setonix scattered imagers must use exactly one CPU per MPI task"
+        )
+    if resources.ntasks != required_tasks:
+        raise SlurmLifecycleError(
+            "imager task count does not match channels: "
+            f"expected {required_tasks} (workers plus master), got {resources.ntasks}"
+        )
+    if resources.ntasks_per_node != required_tasks:
+        raise SlurmLifecycleError(
+            "single-node imager ntasks_per_node must equal the derived task count "
+            f"{required_tasks}"
+        )
 
 
 def _safe_tag(value: str, *, maximum: int) -> str:
@@ -214,7 +264,7 @@ echo "HOST_CONFIG=${{HOST_CONFIG}}"
 echo "CONFIG=${{CONFIG}}"
 ls -lh "${{HOST_CONFIG}}"
 
-srun --export=ALL -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m block:block:block \\
+srun --exact --export=ALL -N {resources.nodes} -n {resources.ntasks} --ntasks-per-node={resources.ntasks_per_node} -c {resources.cpus_per_task} -m block:block:block \\
   singularity exec \\
     --bind "$PWD:/askapbuffer,${{STAGING_ROOT}}:${{STAGING_ROOT}},${{CACHE_ROOT}}:${{CACHE_ROOT}}" \\
     --pwd /askapbuffer \\
@@ -499,7 +549,6 @@ def _submission_command(
         f"--partition={resources.partition}",
         f"--nodes={resources.nodes}",
         f"--ntasks={resources.ntasks}",
-        f"--ntasks-per-node={resources.ntasks_per_node}",
         f"--cpus-per-task={resources.cpus_per_task}",
         f"--mem={resources.memory}",
         f"--time={resources.time_limit}",
@@ -586,6 +635,7 @@ def run_setonix_imager(
     config = config.resolve(strict=True)
     if not config.is_file():
         raise SlurmLifecycleError(f"imager config is not a regular file: {config}")
+    _validate_imager_task_envelope(resources, config)
     sif = Path(sif_value).expanduser()
     if not sif.is_absolute():
         raise SlurmLifecycleError("BEAMPIPE_ASKAPSOFT_SIF must be an absolute path")
