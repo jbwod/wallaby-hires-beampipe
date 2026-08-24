@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from wallaby_hires.__main__ import _parser
 from wallaby_hires.slurm import (
     SlurmImagerResources,
     SlurmInterrupted,
@@ -13,6 +14,25 @@ from wallaby_hires.slurm import (
     _parse_job_reference,
     run_setonix_imager,
 )
+
+
+def test_setonix_cli_defaults_match_validated_child_envelope():
+    arguments = _parser().parse_args(
+        [
+            "run-setonix-imager",
+            "--workdir",
+            "/tmp/work",
+            "--config",
+            "/tmp/imager.in",
+        ]
+    )
+
+    assert arguments.nodes == 1
+    assert arguments.ntasks == 6
+    assert arguments.ntasks_per_node == 6
+    assert arguments.cpus_per_task == 1
+    assert arguments.memory == "8G"
+    assert arguments.time_limit == "00:40:00"
 
 
 class FakeSlurm:
@@ -156,6 +176,8 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert 'ls -lh "${HOST_CONFIG}"' in script
     assert 'ls -lh "${CONFIG}"' not in script
     assert 'echo "SLURM_JOB_CPUS_PER_NODE=${SLURM_JOB_CPUS_PER_NODE:-}"' in script
+    assert "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU" in script
+    assert "SLURM_MEM_PER_NODE" not in script
     assert f"STAGING_ROOT={root}" in script
     assert f"CACHE_ROOT={tmp_path / 'cache'}" in script
     assert "${STAGING_ROOT}:${STAGING_ROOT}" in script
