@@ -169,6 +169,7 @@ def _copy_file_secure(source: Path, destination: Path) -> None:
 
 
 def _batch_script(
+    config_on_host: Path,
     config_in_container: str,
     sif: Path,
     staging_root: Path,
@@ -176,6 +177,7 @@ def _batch_script(
     resources: SlurmImagerResources,
     parent_job_id: str | None,
 ) -> str:
+    quoted_host_config = shlex.quote(str(config_on_host))
     quoted_config = shlex.quote(config_in_container)
     quoted_sif = shlex.quote(str(sif))
     quoted_root = shlex.quote(str(staging_root))
@@ -193,6 +195,7 @@ export FI_CXI_DEFAULT_VNI=$(od -vAn -N4 -tu < /dev/urandom)
 unset SLURM_CPU_BIND SLURM_CPU_BIND_LIST SLURM_CPU_BIND_TYPE SLURM_CPU_BIND_VERBOSE
 unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE
 
+HOST_CONFIG={quoted_host_config}
 CONFIG={quoted_config}
 ASKAPSOFT_SIF={quoted_sif}
 STAGING_ROOT={quoted_root}
@@ -202,8 +205,14 @@ PARENT_JOB_ID={quoted_parent_job_id}
 echo "IMAGER START $(date)"
 echo "HOST=$(hostname)"
 echo "PWD=$(pwd)"
+echo "SLURM_JOB_ID=${{SLURM_JOB_ID:-}}"
+echo "SLURM_JOB_NUM_NODES=${{SLURM_JOB_NUM_NODES:-}}"
+echo "SLURM_NTASKS=${{SLURM_NTASKS:-}}"
+echo "SLURM_CPUS_PER_TASK=${{SLURM_CPUS_PER_TASK:-}}"
+echo "SLURM_JOB_CPUS_PER_NODE=${{SLURM_JOB_CPUS_PER_NODE:-}}"
+echo "HOST_CONFIG=${{HOST_CONFIG}}"
 echo "CONFIG=${{CONFIG}}"
-ls -lh "${{CONFIG}}"
+ls -lh "${{HOST_CONFIG}}"
 
 srun -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m block:block:block \\
   singularity exec \\
@@ -503,6 +512,14 @@ def _submission_command(
     ]
 
 
+def _submission_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """Remove resource hints inherited from the enclosing Slurm allocation."""
+
+    return {
+        key: value for key, value in environment.items() if not key.startswith("SLURM_")
+    }
+
+
 def run_setonix_imager(
     workdir: Path,
     config: Path,
@@ -603,6 +620,7 @@ def run_setonix_imager(
     _write_evidence(
         script_path,
         _batch_script(
+            config_copy,
             config_in_container,
             sif,
             staging_root,
@@ -632,6 +650,7 @@ def run_setonix_imager(
                 check=False,
                 capture_output=True,
                 text=True,
+                env=_submission_environment(environment),
             )
             if submission.returncode != 0:
                 detail = _single_line_detail(

@@ -34,10 +34,12 @@ class FakeSlurm:
         self.cancel_stays_queued = cancel_stays_queued
         self.scancel_called = False
         self.calls = []
+        self.call_kwargs = []
 
     def __call__(self, args, **kwargs):
         command = list(args)
         self.calls.append(command)
+        self.call_kwargs.append(kwargs)
         if command[0] == "sbatch":
             stdout = self.sbatch_stdout
             if stdout is None:
@@ -149,6 +151,10 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert stat.S_IMODE((lifecycle / "imager.in").stat().st_mode) == 0o600
     script = (lifecycle / "imager-job.sh").read_text()
     assert "srun -N 2 -n 4 -c 3" in script
+    assert f"HOST_CONFIG={lifecycle / 'imager.in'}" in script
+    assert 'ls -lh "${HOST_CONFIG}"' in script
+    assert 'ls -lh "${CONFIG}"' not in script
+    assert 'echo "SLURM_JOB_CPUS_PER_NODE=${SLURM_JOB_CPUS_PER_NODE:-}"' in script
     assert f"STAGING_ROOT={root}" in script
     assert f"CACHE_ROOT={tmp_path / 'cache'}" in script
     assert "${STAGING_ROOT}:${STAGING_ROOT}" in script
@@ -165,6 +171,36 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
         text=True,
     )
     assert syntax.returncode == 0, syntax.stderr
+
+
+def test_nested_imager_strips_parent_slurm_environment_before_sbatch(tmp_path):
+    _root, workdir, config, environment = _runtime(tmp_path)
+    environment.update(
+        {
+            "PATH": os.environ.get("PATH", ""),
+            "SLURM_NTASKS": "2",
+            "SLURM_JOB_CPUS_PER_NODE": "2",
+            "SLURM_MEM_PER_CPU": "3072",
+            "WALLABY_RUNTIME_MARKER": "preserved",
+        }
+    )
+    fake = FakeSlurm()
+
+    run_setonix_imager(
+        workdir,
+        config,
+        environment=environment,
+        poll_interval=0,
+        run_command=fake,
+    )
+
+    sbatch_index = next(
+        index for index, call in enumerate(fake.calls) if call[0] == "sbatch"
+    )
+    submission_environment = fake.call_kwargs[sbatch_index]["env"]
+    assert submission_environment["PATH"] == environment["PATH"]
+    assert submission_environment["WALLABY_RUNTIME_MARKER"] == "preserved"
+    assert not any(key.startswith("SLURM_") for key in submission_environment)
 
 
 def test_nested_imager_rejects_an_invalid_parent_job_identifier(tmp_path):
