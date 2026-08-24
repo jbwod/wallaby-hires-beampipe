@@ -95,6 +95,7 @@ def _runtime(tmp_path: Path):
         "BEAMPIPE_ASKAPSOFT_SIF": str(sif),
         "WALLABY_HIRES_STAGING_ROOT": str(root),
         "DLG_SESSION_ID": "session/unsafe value",
+        "SLURM_JOB_ID": "90001",
     }
     return root, workdir, config, environment
 
@@ -149,6 +150,33 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert "${STAGING_ROOT}:${STAGING_ROOT}" in script
     assert "--pwd /askapbuffer" in script
     assert "/askapbuffer/.beampipe-imager." in script
+    assert "PARENT_JOB_ID=90001" in script
+    assert 'squeue --noheader --jobs="${PARENT_JOB_ID}"' in script
+    assert 'kill -TERM "${imager_pid}"' in script
+    assert "parent_lost=1" in script
+    syntax = subprocess.run(
+        ["bash", "-n", str(lifecycle / "imager-job.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert syntax.returncode == 0, syntax.stderr
+
+
+def test_nested_imager_rejects_an_invalid_parent_job_identifier(tmp_path):
+    _root, workdir, config, environment = _runtime(tmp_path)
+    environment["SLURM_JOB_ID"] = "90001; scancel 1"
+    fake = FakeSlurm()
+
+    with pytest.raises(SlurmLifecycleError, match="numeric outer job identifier"):
+        run_setonix_imager(
+            workdir,
+            config,
+            environment=environment,
+            run_command=fake,
+        )
+
+    assert fake.calls == []
 
 
 def test_catchable_interruption_cancels_only_the_recorded_child(tmp_path):

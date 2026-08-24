@@ -69,6 +69,7 @@ _ACCOUNT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _RESOURCE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:+-]{0,63}\Z")
 _TIME_RE = re.compile(r"(?:\d+-)?\d{1,2}:\d{2}:\d{2}\Z")
 _SBATCH_RESULT_RE = re.compile(r"(?P<job_id>\d+)(?:;(?P<cluster>[A-Za-z0-9_.-]+))?\Z")
+_JOB_ID_RE = re.compile(r"\d+\Z")
 _TERMINAL_STATES = {
     "BOOT_FAIL",
     "CANCELLED",
@@ -172,10 +173,12 @@ def _batch_script(
     sif: Path,
     staging_root: Path,
     resources: SlurmImagerResources,
+    parent_job_id: str | None,
 ) -> str:
     quoted_config = shlex.quote(config_in_container)
     quoted_sif = shlex.quote(str(sif))
     quoted_root = shlex.quote(str(staging_root))
+    quoted_parent_job_id = shlex.quote(parent_job_id or "")
     return f"""#!/bin/bash --login
 set -o pipefail
 
@@ -191,6 +194,7 @@ unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE
 CONFIG={quoted_config}
 ASKAPSOFT_SIF={quoted_sif}
 STAGING_ROOT={quoted_root}
+PARENT_JOB_ID={quoted_parent_job_id}
 
 echo "IMAGER START $(date)"
 echo "HOST=$(hostname)"
@@ -203,9 +207,31 @@ srun -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m 
     --bind "$PWD:/askapbuffer,${{STAGING_ROOT}}:${{STAGING_ROOT}}" \\
     --pwd /askapbuffer \\
     "${{ASKAPSOFT_SIF}}" \\
-    imager -c "${{CONFIG}}"
+    imager -c "${{CONFIG}}" &
 
+imager_pid=$!
+parent_lost=0
+while kill -0 "${{imager_pid}}" 2>/dev/null; do
+  if [ -n "${{PARENT_JOB_ID}}" ]; then
+    if parent_rows=$(squeue --noheader --jobs="${{PARENT_JOB_ID}}" --format='%A' 2>/dev/null); then
+      if ! printf '%s\n' "${{parent_rows}}" | grep -Fxq -- "${{PARENT_JOB_ID}}"; then
+        echo "OUTER JOB ${{PARENT_JOB_ID}} DISAPPEARED; TERMINATING CHILD" >&2
+        parent_lost=1
+        kill -TERM "${{imager_pid}}" 2>/dev/null || true
+        break
+      fi
+    else
+      echo "Unable to query outer job ${{PARENT_JOB_ID}}; retaining child and retrying" >&2
+    fi
+  fi
+  sleep 10
+done
+
+wait "${{imager_pid}}"
 rc=$?
+if [ "${{parent_lost}}" -eq 1 ]; then
+  rc=143
+fi
 echo "IMAGER END $(date), rc=${{rc}}"
 ls -lh image* weights* *.fits 2>/dev/null || true
 exit "${{rc}}"
@@ -508,6 +534,9 @@ def run_setonix_imager(
         )
     if not sif_value:
         raise SlurmLifecycleError("BEAMPIPE_ASKAPSOFT_SIF is required")
+    parent_job_id = (environment.get("SLURM_JOB_ID") or "").strip()
+    if parent_job_id and not _JOB_ID_RE.fullmatch(parent_job_id):
+        raise SlurmLifecycleError("SLURM_JOB_ID must be a numeric outer job identifier")
 
     root_value = (environment.get("WALLABY_HIRES_STAGING_ROOT") or "").strip()
     staging_root = Path(resolve_staging_root(root_value)).resolve(strict=True)
@@ -560,7 +589,13 @@ def run_setonix_imager(
     script_path = lifecycle_dir / "imager-job.sh"
     _write_evidence(
         script_path,
-        _batch_script(config_in_container, sif, staging_root, resources),
+        _batch_script(
+            config_in_container,
+            sif,
+            staging_root,
+            resources,
+            parent_job_id or None,
+        ),
     )
     os.chmod(script_path, 0o700)
     _write_evidence(lifecycle_dir / "child-job-name", f"{job_name}\n")
