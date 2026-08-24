@@ -929,8 +929,10 @@ def read_and_process_csv(filename: str) -> list:
         if not data:
             print(f"Warning: CSV file '{filename}' is empty.")
         else:
-            print(f"CSV file '{filename}' successfully read and processed into a list of \
-                    dictionaries.")
+            print(
+                f"CSV file '{filename}' successfully read and processed into a list of \
+                    dictionaries."
+            )
 
     return data
 
@@ -1294,13 +1296,98 @@ def _validate_tar_member(info: tarfile.TarInfo) -> None:
     if not _tar_member_name_safe(info.name):
         raise ManifestDownloadError(f"Unsafe archive member name: {info.name!r}")
     if info.issym() or info.islnk():
-        raise ManifestDownloadError(f"Archive links are not permitted: {info.name!r}")
+        if _tar_link_target_name(info) is None:
+            raise ManifestDownloadError(
+                f"Archive link escapes extraction root: {info.name!r}"
+            )
+        return
     if not (info.isdir() or info.isfile()):
         raise ManifestDownloadError(f"Unsupported archive member type: {info.name!r}")
 
 
+def _normalized_tar_path(name: str, base_parts=()) -> Optional[str]:
+    raw = (name or "").replace("\\", "/").strip()
+    if (
+        not raw
+        or raw.startswith("/")
+        or re.match(r"^[A-Za-z]:", raw)
+        or any(ord(char) < 32 or ord(char) == 127 for char in raw)
+    ):
+        return None
+    parts = list(base_parts)
+    for part in PurePosixPath(raw).parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if not parts:
+                return None
+            parts.pop()
+        else:
+            parts.append(part)
+    return "/".join(parts) or None
+
+
+def _tar_member_key(info: tarfile.TarInfo) -> str:
+    normalized = _normalized_tar_path(info.name)
+    if normalized is None:
+        raise ManifestDownloadError(f"Unsafe archive member name: {info.name!r}")
+    return normalized
+
+
+def _tar_link_target_name(info: tarfile.TarInfo) -> Optional[str]:
+    if not (info.issym() or info.islnk()):
+        return None
+    if info.issym():
+        member_name = _normalized_tar_path(info.name)
+        if member_name is None:
+            return None
+        base_parts = PurePosixPath(member_name).parent.parts
+    else:
+        base_parts = ()
+    return _normalized_tar_path(info.linkname, base_parts)
+
+
+def _index_tar_members(members) -> dict:
+    member_by_name = {}
+    for member in members:
+        _validate_tar_member(member)
+        key = _tar_member_key(member)
+        if key in member_by_name:
+            raise ManifestDownloadError(f"Duplicate archive member: {key!r}")
+        member_by_name[key] = member
+    for member in members:
+        if member.issym() or member.islnk():
+            _resolve_tar_file_member(member, member_by_name)
+    return member_by_name
+
+
+def _resolve_tar_file_member(
+    info: tarfile.TarInfo, member_by_name: dict
+) -> tarfile.TarInfo:
+    current = info
+    visited = set()
+    while current.issym() or current.islnk():
+        current_key = _tar_member_key(current)
+        if current_key in visited:
+            raise ManifestDownloadError(f"Archive link cycle: {info.name!r}")
+        visited.add(current_key)
+        target_name = _tar_link_target_name(current)
+        target = member_by_name.get(target_name or "")
+        if target is None:
+            raise ManifestDownloadError(f"Archive link target is missing: {info.name!r}")
+        current = target
+    if not current.isfile():
+        raise ManifestDownloadError(
+            f"Archive link target is not a regular file: {info.name!r}"
+        )
+    return current
+
+
 def _extract_regular_tar_member(
-    archive: tarfile.TarFile, info: tarfile.TarInfo, staging_dir: str
+    archive: tarfile.TarFile,
+    info: tarfile.TarInfo,
+    staging_dir: str,
+    member_by_name: dict,
 ) -> None:
     normalized_name = (info.name or "").replace("\\", "/")
     path_parts = [
@@ -1312,7 +1399,12 @@ def _extract_regular_tar_member(
         return
 
     os.makedirs(os.path.dirname(destination), exist_ok=True)
-    source = archive.extractfile(info)
+    source_info = (
+        _resolve_tar_file_member(info, member_by_name)
+        if info.issym() or info.islnk()
+        else info
+    )
+    source = archive.extractfile(source_info)
     if source is None:
         raise ManifestDownloadError(f"Unable to read archive member: {info.name!r}")
     temporary_path = f"{destination}.part"
@@ -1321,9 +1413,9 @@ def _extract_regular_tar_member(
             shutil.copyfileobj(source, target, length=4 * 1024 * 1024)
             target.flush()
             os.fsync(target.fileno())
-        if os.path.getsize(temporary_path) != info.size:
+        if os.path.getsize(temporary_path) != source_info.size:
             raise ManifestDownloadError(
-                f"Incomplete archive member {info.name!r}: expected {info.size} bytes"
+                f"Incomplete archive member {info.name!r}: expected {source_info.size} bytes"
             )
         os.replace(temporary_path, destination)
     finally:
@@ -1396,8 +1488,7 @@ def untar_file(
     try:
         with tarfile.open(tar_file) as archive:
             members = archive.getmembers()
-            for member in members:
-                _validate_tar_member(member)
+            member_by_name = _index_tar_members(members)
             to_extract = (
                 members
                 if member_filter is None
@@ -1419,7 +1510,9 @@ def untar_file(
                 prefix=".beampipe-extract-", dir=output_dir
             ) as staging_dir:
                 for member in to_extract:
-                    _extract_regular_tar_member(archive, member, staging_dir)
+                    _extract_regular_tar_member(
+                        archive, member, staging_dir, member_by_name
+                    )
                 _publish_extracted_tree(staging_dir, output_dir)
         print(
             f"Extracted {len(to_extract)} member(s) from "
@@ -2106,8 +2199,10 @@ def process_CSV_mosaic(filename: str) -> list:
 
     # Check if data is not empty and print a message
     if data:
-        print(f"CSV file '{filename}' successfully read and processed into a list of \
-                dictionaries.")
+        print(
+            f"CSV file '{filename}' successfully read and processed into a list of \
+                dictionaries."
+        )
     else:
         print(f"Warning: CSV file '{filename}' is empty.")
 
@@ -2176,8 +2271,10 @@ def process_CSV(filename: str) -> list:
         if not data:
             print(f"Warning: CSV file '{filename}' is empty.")
         else:
-            print(f"CSV file '{filename}' successfully read and processed into a list of \
-                    dictionaries.")
+            print(
+                f"CSV file '{filename}' successfully read and processed into a list of \
+                    dictionaries."
+            )
 
     return data
 

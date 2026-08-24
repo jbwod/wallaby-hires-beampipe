@@ -27,6 +27,10 @@ def _write_tar(path, members):
                 info.type = tarfile.SYMTYPE
                 info.linkname = payload.decode()
                 archive.addfile(info)
+            elif kind == "hardlink":
+                info.type = tarfile.LNKTYPE
+                info.linkname = payload.decode()
+                archive.addfile(info)
 
 
 def test_safe_tar_extraction_streams_regular_files(tmp_path):
@@ -43,9 +47,11 @@ def test_safe_tar_extraction_streams_regular_files(tmp_path):
     [
         ("../escape", b"payload", "file"),
         ("safe/link", b"../../escape", "symlink"),
+        ("safe/link", b"/etc/passwd", "symlink"),
+        ("safe/link", b"missing", "hardlink"),
     ],
 )
-def test_tar_extraction_rejects_traversal_and_links(tmp_path, member):
+def test_tar_extraction_rejects_traversal_and_unsafe_links(tmp_path, member):
     archive = tmp_path / "hostile.tar"
     _write_tar(archive, [member])
 
@@ -53,6 +59,41 @@ def test_tar_extraction_rejects_traversal_and_links(tmp_path, member):
         untar_file(str(archive), str(tmp_path / "out"))
 
     assert not (tmp_path / "escape").exists()
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink"])
+def test_safe_archive_links_are_materialized_as_regular_files(tmp_path, kind):
+    archive = tmp_path / "askap.tar"
+    target = "beam.ms/metadata/footprint.txt"
+    link_target = "../metadata/footprint.txt" if kind == "symlink" else target
+    _write_tar(
+        archive,
+        [
+            (target, b"ASKAP footprint", "file"),
+            ("beam.ms/ASKAP_METADATA/footprint.txt", link_target.encode(), kind),
+        ],
+    )
+
+    output = tmp_path / "out"
+    untar_file(str(archive), str(output))
+
+    linked = output / "beam.ms/ASKAP_METADATA/footprint.txt"
+    assert linked.read_bytes() == b"ASKAP footprint"
+    assert not linked.is_symlink()
+
+
+def test_archive_link_cycles_are_rejected(tmp_path):
+    archive = tmp_path / "cycle.tar"
+    _write_tar(
+        archive,
+        [
+            ("safe/a", b"b", "symlink"),
+            ("safe/b", b"a", "symlink"),
+        ],
+    )
+
+    with pytest.raises(ManifestDownloadError, match="cycle"):
+        untar_file(str(archive), str(tmp_path / "out"))
 
 
 def test_ms_retry_uses_completed_local_dataset_before_expired_url(monkeypatch, tmp_path):
