@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
-from .funcs import resolve_staging_root
+from .funcs import resolve_cache_root, resolve_staging_root
 
 
 class SlurmLifecycleError(RuntimeError):
@@ -172,12 +172,14 @@ def _batch_script(
     config_in_container: str,
     sif: Path,
     staging_root: Path,
+    cache_root: Path,
     resources: SlurmImagerResources,
     parent_job_id: str | None,
 ) -> str:
     quoted_config = shlex.quote(config_in_container)
     quoted_sif = shlex.quote(str(sif))
     quoted_root = shlex.quote(str(staging_root))
+    quoted_cache_root = shlex.quote(str(cache_root))
     quoted_parent_job_id = shlex.quote(parent_job_id or "")
     return f"""#!/bin/bash --login
 set -o pipefail
@@ -194,6 +196,7 @@ unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE
 CONFIG={quoted_config}
 ASKAPSOFT_SIF={quoted_sif}
 STAGING_ROOT={quoted_root}
+CACHE_ROOT={quoted_cache_root}
 PARENT_JOB_ID={quoted_parent_job_id}
 
 echo "IMAGER START $(date)"
@@ -204,7 +207,7 @@ ls -lh "${{CONFIG}}"
 
 srun -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m block:block:block \\
   singularity exec \\
-    --bind "$PWD:/askapbuffer,${{STAGING_ROOT}}:${{STAGING_ROOT}}" \\
+    --bind "$PWD:/askapbuffer,${{STAGING_ROOT}}:${{STAGING_ROOT}},${{CACHE_ROOT}}:${{CACHE_ROOT}}" \\
     --pwd /askapbuffer \\
     "${{ASKAPSOFT_SIF}}" \\
     imager -c "${{CONFIG}}" &
@@ -544,6 +547,16 @@ def run_setonix_imager(
         raise SlurmLifecycleError(
             f"WALLABY_HIRES_STAGING_ROOT is not a directory: {staging_root}"
         )
+    cache_value = (environment.get("WALLABY_HIRES_CACHE_ROOT") or "").strip()
+    cache_root = Path(resolve_cache_root(cache_value)).resolve(strict=True)
+    if not cache_root.is_dir():
+        raise SlurmLifecycleError(
+            f"WALLABY_HIRES_CACHE_ROOT is not a directory: {cache_root}"
+        )
+    if cache_root == staging_root:
+        raise SlurmLifecycleError(
+            "WALLABY_HIRES_CACHE_ROOT must differ from WALLABY_HIRES_STAGING_ROOT"
+        )
 
     workdir = workdir.expanduser().resolve(strict=True)
     if not workdir.is_dir():
@@ -593,6 +606,7 @@ def run_setonix_imager(
             config_in_container,
             sif,
             staging_root,
+            cache_root,
             resources,
             parent_job_id or None,
         ),

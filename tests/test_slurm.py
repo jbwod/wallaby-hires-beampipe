@@ -83,6 +83,8 @@ class FakeSlurm:
 
 def _runtime(tmp_path: Path):
     root = tmp_path / "execution"
+    cache = tmp_path / "cache"
+    cache.mkdir()
     workdir = root / "source" / "34166" / "beam25"
     workdir.mkdir(parents=True)
     config = tmp_path / "dlg-session" / "imager.in"
@@ -94,6 +96,7 @@ def _runtime(tmp_path: Path):
         "BEAMPIPE_SLURM_ACCOUNT": "project123",
         "BEAMPIPE_ASKAPSOFT_SIF": str(sif),
         "WALLABY_HIRES_STAGING_ROOT": str(root),
+        "WALLABY_HIRES_CACHE_ROOT": str(cache),
         "DLG_SESSION_ID": "session/unsafe value",
         "SLURM_JOB_ID": "90001",
     }
@@ -147,6 +150,7 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     script = (lifecycle / "imager-job.sh").read_text()
     assert "srun -N 2 -n 4 -c 3" in script
     assert f"STAGING_ROOT={root}" in script
+    assert f"CACHE_ROOT={tmp_path / 'cache'}" in script
     assert "${STAGING_ROOT}:${STAGING_ROOT}" in script
     assert "--pwd /askapbuffer" in script
     assert "/askapbuffer/.beampipe-imager." in script
@@ -269,6 +273,22 @@ def test_nested_imager_rejects_workdir_outside_configured_root(tmp_path):
     with pytest.raises(SlurmLifecycleError, match="workdir escapes"):
         run_setonix_imager(
             outside,
+            config,
+            environment=environment,
+            run_command=fake,
+        )
+
+    assert fake.calls == []
+
+
+def test_nested_imager_rejects_cache_as_output_root(tmp_path):
+    root, workdir, config, environment = _runtime(tmp_path)
+    environment["WALLABY_HIRES_CACHE_ROOT"] = str(root)
+    fake = FakeSlurm()
+
+    with pytest.raises(SlurmLifecycleError, match="must differ"):
+        run_setonix_imager(
+            workdir,
             config,
             environment=environment,
             run_command=fake,

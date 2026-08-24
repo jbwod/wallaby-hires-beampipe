@@ -12,6 +12,7 @@ from wallaby_hires.funcs import (
     process_CSV_mosaic_str_setonix,
     process_CSV_str,
     process_CSV_str_setonix,
+    resolve_cache_root,
     resolve_staging_root,
     validate_manifest,
 )
@@ -312,7 +313,9 @@ def test_production_staging_root_is_required_absolute_and_consistent(
 
 def test_setonix_parsets_use_the_one_configured_root(tmp_path, monkeypatch):
     root = tmp_path / "execution"
+    cache = tmp_path / "cache"
     monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", str(root))
+    monkeypatch.setenv("WALLABY_HIRES_CACHE_ROOT", str(cache))
     csv_text = (
         "Name,RA_string,Dec_string,Vsys,,evaluation_file,source_identifier,sbid\n"
         "source_A_beam25_split.ms.tar,1h,2.0,3,,"
@@ -323,7 +326,32 @@ def test_setonix_parsets_use_the_one_configured_root(tmp_path, monkeypatch):
     mosaic = json.loads(process_CSV_mosaic_str_setonix(csv_text))
 
     assert parsets[0]["Cimager.dataset"] == (
-        f'"{root.resolve()}/source/34166/beam25/source_A_beam25_split.ms"'
+        f'"{cache.resolve()}/source/34166/beam25/source_A_beam25_split.ms"'
     )
     assert parsets[0]["Cimager.beam_root"] == (f"{root.resolve()}/source/34166/beam25")
+    assert parsets[0]["linmos.primarybeam.ASKAP_PB.image"].startswith(
+        f"{cache.resolve()}/source/34166/eval/"
+    )
     assert mosaic[0]["linmos.outname"].startswith("source/image.")
+
+
+def test_production_cache_root_is_required_and_distinct(tmp_path, monkeypatch):
+    monkeypatch.delenv("WALLABY_HIRES_CACHE_ROOT", raising=False)
+    with pytest.raises(ManifestValidationError, match="CACHE_ROOT is required"):
+        resolve_cache_root()
+
+    cache = tmp_path / "cache"
+    other = tmp_path / "other"
+    monkeypatch.setenv("WALLABY_HIRES_CACHE_ROOT", str(cache))
+    assert resolve_cache_root() == str(cache.resolve())
+    with pytest.raises(ManifestValidationError, match="does not match"):
+        resolve_cache_root(str(other))
+
+    monkeypatch.setenv("WALLABY_HIRES_STAGING_ROOT", str(cache))
+    csv_text = (
+        "Name,RA_string,Dec_string,Vsys,,evaluation_file,source_identifier,sbid\n"
+        "source_A_beam25_split.ms.tar,1h,2.0,3,,"
+        "LinmosBeamImages/pb.fits,source,34166\n"
+    )
+    with pytest.raises(ManifestValidationError, match="must differ"):
+        process_CSV_str_setonix(csv_text)

@@ -8234,7 +8234,7 @@
                 },
                 {
                     "name": "dirname",
-                    "value": "$WALLABY_HIRES_STAGING_ROOT",
+                    "value": "$WALLABY_HIRES_CACHE_ROOT",
                     "defaultValue": "",
                     "description": "Directory name/path",
                     "readonly": false,
@@ -8415,7 +8415,7 @@
                 },
                 {
                     "name": "dirname",
-                    "value": "$WALLABY_HIRES_STAGING_ROOT",
+                    "value": "$WALLABY_HIRES_CACHE_ROOT",
                     "defaultValue": "",
                     "description": "Directory name/path",
                     "readonly": false,

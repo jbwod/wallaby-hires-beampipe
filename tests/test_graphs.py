@@ -117,7 +117,7 @@ def test_setonix_graph_closes_runtime_and_inventory_over_one_root():
         field["value"] for field in mosaic["fields"] if field["name"] == "command"
     )
 
-    assert values.count("$WALLABY_HIRES_STAGING_ROOT") == 2
+    assert values.count("$WALLABY_HIRES_CACHE_ROOT") == 2
     assert "$DLG_ROOT/wallaby_staging_data/" not in values
     assert "wallaby_hires.process_CSV_str_setonix" in values
     assert "wallaby_hires.process_CSV_mosaic_str_setonix" in values

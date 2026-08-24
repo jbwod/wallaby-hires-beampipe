@@ -425,6 +425,53 @@ def resolve_staging_root(
     return resolved_root
 
 
+def resolve_cache_root(cache_root: Optional[str] = None, *, required: bool = True) -> str:
+    """Resolve the shared, read-mostly cache independently from run outputs."""
+    if cache_root is None:
+        cache_root = ""
+    cache_root = _peel_dlg_port_to_str_or_tuple(cache_root)
+    if cache_root is None:
+        cache_root = ""
+    if isinstance(cache_root, tuple):
+        cache_root = str(cache_root)
+    explicit_root = str(cache_root).strip()
+    environment_root = os.environ.get("WALLABY_HIRES_CACHE_ROOT", "").strip()
+    raw_root = explicit_root or environment_root
+    if not raw_root:
+        if required:
+            raise ManifestValidationError(
+                "WALLABY_HIRES_CACHE_ROOT is required for production execution"
+            )
+        return ""
+    expanded_root = os.path.expandvars(raw_root)
+    if any(character in expanded_root for character in ("\x00", "\n", "\r", ",", ":")):
+        raise ManifestValidationError(
+            "WALLABY_HIRES_CACHE_ROOT contains an unsafe bind-path character"
+        )
+    if "$" in expanded_root or not os.path.isabs(expanded_root):
+        raise ManifestValidationError(
+            "WALLABY_HIRES_CACHE_ROOT must be an absolute expanded path"
+        )
+    resolved_root = os.path.realpath(expanded_root)
+    if resolved_root == os.path.sep:
+        raise ManifestValidationError(
+            "WALLABY_HIRES_CACHE_ROOT cannot be the filesystem root"
+        )
+    if explicit_root and environment_root:
+        expanded_environment_root = os.path.expandvars(environment_root)
+        if "$" in expanded_environment_root or not os.path.isabs(
+            expanded_environment_root
+        ):
+            raise ManifestValidationError(
+                "WALLABY_HIRES_CACHE_ROOT must be an absolute expanded path"
+            )
+        if os.path.realpath(expanded_environment_root) != resolved_root:
+            raise ManifestValidationError(
+                "cache_root input does not match WALLABY_HIRES_CACHE_ROOT"
+            )
+    return resolved_root
+
+
 def _resolve_staging_root_arg(staging_root: Optional[str]) -> str:
     """Compatibility resolver for legacy/no-download functions."""
     return resolve_staging_root(staging_root, required=False)
@@ -1907,7 +1954,7 @@ def download_data_ms(
     if not ms_urls_json:
         raise ValueError("manifest input required; ms_urls_json must be provided")
     raw = json.loads(ms_urls_json)
-    workspace_root = resolve_staging_root(staging_root)
+    workspace_root = resolve_cache_root(staging_root)
     items = []
     for u in raw:
         if isinstance(u, str):
@@ -2050,7 +2097,7 @@ def download_data_eval(
     if not eval_urls_json:
         raise ValueError("manifest input required; eval_urls_json must be provided")
     raw = json.loads(eval_urls_json)
-    workspace_root = resolve_staging_root(staging_root)
+    workspace_root = resolve_cache_root(staging_root)
     items = []
     for u in raw:
         if isinstance(u, str):
@@ -2287,7 +2334,11 @@ def process_CSV(filename: str) -> list:
     return data
 
 
-def process_CSV_str(csv_string: str, staging_root: Optional[str] = None) -> list:
+def process_CSV_str(
+    csv_string: str,
+    staging_root: Optional[str] = None,
+    cache_root: Optional[str] = None,
+) -> list:
     """
     Processes a CSV string into a list of parset dicts, then returns **pickle
     bytes** of that list.
@@ -2373,8 +2424,11 @@ def process_CSV_str(csv_string: str, staging_root: Optional[str] = None) -> list
             workspace_root = resolve_staging_root(
                 staging_root, required=False
             ) or os.path.abspath(os.getcwd())
+            input_root = resolve_cache_root(cache_root, required=False) or workspace_root
             beam_root = _safe_join(workspace_root, source_identifier, sbid, beam_dir)
-            dataset_path = os.path.join(beam_root, ms_dir)
+            dataset_path = _safe_join(
+                input_root, source_identifier, sbid, beam_dir, ms_dir
+            )
             eval_rel = str(evaluation_file).lstrip("/").strip()
             marker = "LinmosBeamImages/"
             if marker in eval_rel:
@@ -2390,7 +2444,7 @@ def process_CSV_str(csv_string: str, staging_root: Optional[str] = None) -> list
                     "CSV evaluation_file contains an unsafe path"
                 )
             evaluation_file = _safe_join(
-                workspace_root,
+                input_root,
                 source_identifier,
                 sbid,
                 "eval",
@@ -2437,8 +2491,18 @@ def process_CSV_str(csv_string: str, staging_root: Optional[str] = None) -> list
 
 
 def process_CSV_str_setonix(csv_string: str) -> list:
-    """Build production parsets under the required shared staging root."""
-    return process_CSV_str(csv_string, staging_root=resolve_staging_root())
+    """Build run-scoped outputs over the shared validated input cache."""
+    staging_root = resolve_staging_root()
+    cache_root = resolve_cache_root()
+    if staging_root == cache_root:
+        raise ManifestValidationError(
+            "WALLABY_HIRES_STAGING_ROOT and WALLABY_HIRES_CACHE_ROOT must differ"
+        )
+    return process_CSV_str(
+        csv_string,
+        staging_root=staging_root,
+        cache_root=cache_root,
+    )
 
 
 def process_CSV_mosaic_str(csv_string: str) -> bytes:
