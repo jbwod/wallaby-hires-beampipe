@@ -37,10 +37,10 @@ class SlurmImagerResources:
 
     partition: str = "work"
     nodes: int = 1
-    ntasks: int = 2
-    ntasks_per_node: int = 2
+    ntasks: int = 6
+    ntasks_per_node: int = 6
     cpus_per_task: int = 1
-    memory: str = "12G"
+    memory: str = "6G"
     time_limit: str = "00:20:00"
 
 

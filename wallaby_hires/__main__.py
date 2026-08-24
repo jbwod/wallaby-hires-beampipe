@@ -102,10 +102,10 @@ def _parser() -> argparse.ArgumentParser:
     setonix_imager.add_argument("--config", type=Path, required=True)
     setonix_imager.add_argument("--partition", default="work")
     setonix_imager.add_argument("--nodes", type=int, default=1)
-    setonix_imager.add_argument("--ntasks", type=int, default=2)
-    setonix_imager.add_argument("--ntasks-per-node", type=int, default=2)
+    setonix_imager.add_argument("--ntasks", type=int, default=6)
+    setonix_imager.add_argument("--ntasks-per-node", type=int, default=6)
     setonix_imager.add_argument("--cpus-per-task", type=int, default=1)
-    setonix_imager.add_argument("--memory", default="12G")
+    setonix_imager.add_argument("--memory", default="6G")
     setonix_imager.add_argument("--time-limit", default="00:20:00")
 
     return parser

@@ -98,15 +98,23 @@ def test_one_source_fixture_has_an_explicit_nested_imager_budget():
         for value in values
         if isinstance(value, str) and "run-setonix-imager" in value
     )
+    cimager = next(
+        node for node in _graph_nodes(SETONIX_GRAPH) if node["name"] == "CimagerStaticNew"
+    )
+    cimager_fields = {field["name"]: field["value"] for field in cimager["fields"]}
 
     assert len(manifest["sources"]) == 1
     assert dataset_count == 6
     assert "--partition work" in command
     assert "--nodes 1" in command
-    assert "--ntasks 2" in command
+    assert "--ntasks 6" in command
+    assert "--ntasks-per-node 6" in command
     assert "--cpus-per-task 1" in command
-    assert "--memory 12G" in command
+    assert "--memory 6G" in command
     assert "--time-limit 00:20:00" in command
+
+    assert cimager_fields["Cimager.Channels"] == "[250,0]"
+    assert cimager_fields["Cimager.nchanpercore"] == 50
 
 
 def test_setonix_graph_closes_runtime_and_inventory_over_one_root():
