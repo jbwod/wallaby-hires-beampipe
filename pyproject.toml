@@ -1,6 +1,6 @@
 [project]
 name = "wallaby-hires"
-version = "0.1.15"
+version = "0.1.16"
 description = "DALiuGE components for the Beampipe WALLABY high-resolution imaging workflow"
 authors = [{ name = "ICRAR and WALLABY contributors" }]
 readme = "README.md"
