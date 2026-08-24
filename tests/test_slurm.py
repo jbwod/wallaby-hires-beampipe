@@ -132,9 +132,9 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert "--nodes=1" in sbatch
     assert "--ntasks=6" in sbatch
     assert "--cpus-per-task=1" in sbatch
-    assert "--mem=6G" in sbatch
-    assert "--time=00:20:00" in sbatch
-    assert not any(item.startswith("--ntasks-per-node=") for item in sbatch)
+    assert "--ntasks-per-node=6" in sbatch
+    assert "--mem=8G" in sbatch
+    assert "--time=00:40:00" in sbatch
     assert [call for call in fake.calls if call[0] == "scontrol"] == [
         ["scontrol", "--clusters=setonix", "release", "12345"]
     ]
@@ -148,7 +148,9 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert stat.S_IMODE((lifecycle / "child-job-id").stat().st_mode) == 0o600
     assert stat.S_IMODE((lifecycle / "imager.in").stat().st_mode) == 0o600
     script = (lifecycle / "imager-job.sh").read_text()
-    assert "srun --exact --export=ALL -N 1 -n 6 --ntasks-per-node=6 -c 1" in script
+    assert "srun --export=ALL -N 1 -n 6 -c 1" in script
+    assert "srun --exact" not in script
+    assert "srun --ntasks-per-node" not in script
     assert f"HOST_CONFIG={lifecycle / 'imager.in'}" in script
     assert 'ls -lh "${HOST_CONFIG}"' in script
     assert 'ls -lh "${CONFIG}"' not in script

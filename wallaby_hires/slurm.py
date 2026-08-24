@@ -40,8 +40,8 @@ class SlurmImagerResources:
     ntasks: int = 6
     ntasks_per_node: int = 6
     cpus_per_task: int = 1
-    memory: str = "6G"
-    time_limit: str = "00:20:00"
+    memory: str = "8G"
+    time_limit: str = "00:40:00"
 
 
 @dataclass(frozen=True)
@@ -264,7 +264,7 @@ echo "HOST_CONFIG=${{HOST_CONFIG}}"
 echo "CONFIG=${{CONFIG}}"
 ls -lh "${{HOST_CONFIG}}"
 
-srun --exact --export=ALL -N {resources.nodes} -n {resources.ntasks} --ntasks-per-node={resources.ntasks_per_node} -c {resources.cpus_per_task} -m block:block:block \\
+srun --export=ALL -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m block:block:block \\
   singularity exec \\
     --bind "$PWD:/askapbuffer,${{STAGING_ROOT}}:${{STAGING_ROOT}},${{CACHE_ROOT}}:${{CACHE_ROOT}}" \\
     --pwd /askapbuffer \\
@@ -549,6 +549,7 @@ def _submission_command(
         f"--partition={resources.partition}",
         f"--nodes={resources.nodes}",
         f"--ntasks={resources.ntasks}",
+        f"--ntasks-per-node={resources.ntasks_per_node}",
         f"--cpus-per-task={resources.cpus_per_task}",
         f"--mem={resources.memory}",
         f"--time={resources.time_limit}",
