@@ -150,7 +150,7 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert stat.S_IMODE((lifecycle / "child-job-id").stat().st_mode) == 0o600
     assert stat.S_IMODE((lifecycle / "imager.in").stat().st_mode) == 0o600
     script = (lifecycle / "imager-job.sh").read_text()
-    assert "srun -N 2 -n 4 -c 3" in script
+    assert "srun --export=ALL -N 2 -n 4 -c 3" in script
     assert f"HOST_CONFIG={lifecycle / 'imager.in'}" in script
     assert 'ls -lh "${HOST_CONFIG}"' in script
     assert 'ls -lh "${CONFIG}"' not in script
