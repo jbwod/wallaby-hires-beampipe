@@ -42,6 +42,53 @@ def test_safe_tar_extraction_streams_regular_files(tmp_path):
     assert (tmp_path / "out/beam.ms/table.dat").read_bytes() == b"measurement-set"
 
 
+def test_fresh_extracted_tree_is_published_by_atomic_rename(monkeypatch, tmp_path):
+    archive = tmp_path / "beam.tar"
+    _write_tar(
+        archive,
+        [
+            ("beam.ms/table.dat", b"measurement-set", "file"),
+            ("beam.ms/subtable/row", b"metadata", "file"),
+        ],
+    )
+
+    monkeypatch.setattr(
+        funcs.shutil,
+        "copytree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a fresh validated tree must be renamed, not copied"
+        ),
+    )
+
+    output = tmp_path / "out"
+    untar_file(str(archive), str(output))
+
+    assert (output / "beam.ms/table.dat").read_bytes() == b"measurement-set"
+    assert (output / "beam.ms/subtable/row").read_bytes() == b"metadata"
+    assert not list(output.glob(".beampipe-extract-*"))
+
+
+def test_extracted_tree_merges_an_existing_legacy_destination(tmp_path):
+    archive = tmp_path / "beam.tar"
+    _write_tar(
+        archive,
+        [
+            ("beam.ms/table.dat", b"measurement-set", "file"),
+            ("beam.ms/new-row", b"new", "file"),
+        ],
+    )
+    output = tmp_path / "out"
+    existing = output / "beam.ms"
+    existing.mkdir(parents=True)
+    (existing / "legacy-row").write_bytes(b"legacy")
+
+    untar_file(str(archive), str(output))
+
+    assert (existing / "table.dat").read_bytes() == b"measurement-set"
+    assert (existing / "new-row").read_bytes() == b"new"
+    assert (existing / "legacy-row").read_bytes() == b"legacy"
+
+
 @pytest.mark.parametrize(
     "member",
     [

@@ -1426,7 +1426,15 @@ def _extract_regular_tar_member(
 
 
 def _publish_extracted_tree(staging_dir: str, output_dir: str) -> None:
-    """Merge a fully validated temporary extraction into its final workspace."""
+    """Publish a fully validated temporary extraction into its final workspace.
+
+    The temporary directory is deliberately created below ``output_dir``, so a
+    new top-level tree can be renamed into place atomically on the same
+    filesystem.  Large MeasurementSets must not be copied a second time after
+    validation: besides doubling the I/O, ``copytree`` exposes a partially
+    populated destination for the duration of that copy.  Existing destinations
+    still use the merge path for compatibility with interrupted legacy runs.
+    """
     output_root = Path(output_dir).resolve()
     for source_path in Path(staging_dir).rglob("*"):
         relative_path = source_path.relative_to(staging_dir)
@@ -1444,7 +1452,7 @@ def _publish_extracted_tree(staging_dir: str, output_dir: str) -> None:
             raise ManifestDownloadError("Extraction destination escapes output root")
     for child in Path(staging_dir).iterdir():
         destination = Path(output_dir, child.name)
-        if child.is_dir():
+        if child.is_dir() and destination.exists():
             shutil.copytree(child, destination, dirs_exist_ok=True)
         else:
             os.replace(child, destination)
