@@ -264,7 +264,7 @@ echo "HOST_CONFIG=${{HOST_CONFIG}}"
 echo "CONFIG=${{CONFIG}}"
 ls -lh "${{HOST_CONFIG}}"
 
-srun --export=ALL -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m block:block:block \\
+srun -N {resources.nodes} -n {resources.ntasks} -c {resources.cpus_per_task} -m block:block:block \\
   singularity exec \\
     --bind "$PWD:/askapbuffer,${{STAGING_ROOT}}:${{STAGING_ROOT}},${{CACHE_ROOT}}:${{CACHE_ROOT}}" \\
     --pwd /askapbuffer \\
