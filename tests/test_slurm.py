@@ -31,7 +31,7 @@ def test_setonix_cli_defaults_match_validated_child_envelope():
     assert arguments.ntasks == 6
     assert arguments.ntasks_per_node == 6
     assert arguments.cpus_per_task == 1
-    assert arguments.memory == "8G"
+    assert arguments.memory == "4G"
     assert arguments.time_limit == "00:40:00"
 
 
@@ -153,7 +153,7 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert "--ntasks=6" in sbatch
     assert "--cpus-per-task=1" in sbatch
     assert "--ntasks-per-node=6" in sbatch
-    assert "--mem=8G" in sbatch
+    assert "--mem=4G" in sbatch
     assert "--time=00:40:00" in sbatch
     assert [call for call in fake.calls if call[0] == "scontrol"] == [
         ["scontrol", "--clusters=setonix", "release", "12345"]

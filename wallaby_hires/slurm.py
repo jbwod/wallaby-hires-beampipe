@@ -40,7 +40,7 @@ class SlurmImagerResources:
     ntasks: int = 6
     ntasks_per_node: int = 6
     cpus_per_task: int = 1
-    memory: str = "8G"
+    memory: str = "4G"
     time_limit: str = "00:40:00"
 
 
