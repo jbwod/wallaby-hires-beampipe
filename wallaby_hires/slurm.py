@@ -41,7 +41,7 @@ class SlurmImagerResources:
     ntasks_per_node: int = 6
     cpus_per_task: int = 1
     memory: str = "4G"
-    time_limit: str = "00:40:00"
+    time_limit: str = "00:50:00"
 
 
 @dataclass(frozen=True)

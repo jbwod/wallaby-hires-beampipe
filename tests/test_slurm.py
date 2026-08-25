@@ -32,7 +32,7 @@ def test_setonix_cli_defaults_match_validated_child_envelope():
     assert arguments.ntasks_per_node == 6
     assert arguments.cpus_per_task == 1
     assert arguments.memory == "4G"
-    assert arguments.time_limit == "00:40:00"
+    assert arguments.time_limit == "00:50:00"
 
 
 class FakeSlurm:
@@ -154,7 +154,7 @@ def test_nested_imager_records_exact_id_resources_and_terminal_evidence(tmp_path
     assert "--cpus-per-task=1" in sbatch
     assert "--ntasks-per-node=6" in sbatch
     assert "--mem=4G" in sbatch
-    assert "--time=00:40:00" in sbatch
+    assert "--time=00:50:00" in sbatch
     assert [call for call in fake.calls if call[0] == "scontrol"] == [
         ["scontrol", "--clusters=setonix", "release", "12345"]
     ]

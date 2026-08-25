@@ -9257,7 +9257,7 @@
             "fields": [
                 {
                     "name": "command",
-                    "value": "exec wallaby_hires run-setonix-imager --workdir \"{beam_root}\" --config \"{c}\" --partition work --nodes 1 --ntasks 6 --ntasks-per-node 6 --cpus-per-task 1 --memory 4G --time-limit 00:40:00",
+                    "value": "exec wallaby_hires run-setonix-imager --workdir \"{beam_root}\" --config \"{c}\" --partition work --nodes 1 --ntasks 6 --ntasks-per-node 6 --cpus-per-task 1 --memory 4G --time-limit 00:50:00",
                     "defaultValue": "",
                     "description": "The command to be executed",
                     "readonly": false,

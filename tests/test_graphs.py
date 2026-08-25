@@ -115,7 +115,7 @@ def test_one_source_fixture_has_an_explicit_nested_imager_budget():
     assert "--ntasks-per-node 6" in command
     assert "--cpus-per-task 1" in command
     assert "--memory 4G" in command
-    assert "--time-limit 00:40:00" in command
+    assert "--time-limit 00:50:00" in command
 
     assert cimager_fields["Cimager.Channels"] == "[250,0]"
     assert cimager_fields["Cimager.nchanpercore"] == 50
