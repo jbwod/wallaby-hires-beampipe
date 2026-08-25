@@ -86,8 +86,8 @@ metadata describes where the graph is edited and is not an execution pin.
 ## Pipeline architecture
 
 > Production-shaped processing flow under Beampipe: manifest ⮕ staging ⮕ scatter
-> per beam ⮕ imager / imcontsub / linmos ⮕ mosaic. Durable output verification and
-> publication remain a required integration boundary.
+> per beam ⮕ imager / imcontsub / linmos ⮕ mosaic ⮕ verified durable publication.
+> The terminal publisher comes from the project-neutral `beampipe-pallette` package.
 
 <p align="center">
   <img src="images/new-graph.png" alt="WALLABY hi-res Beampipe DALiuGE graph" width="900" />
@@ -196,8 +196,8 @@ Example manifest shape: [`wallaby_hires/test_staging_e2e_manifest.json`](wallaby
 The accepted Beampipe/Core variants and the different no-download contract are
 documented in the [manifest contract](docs/manifest-contract.md).
 
-Output verification and the remaining production publisher/Core integration are
-documented in [`docs/output-integrity.md`](docs/output-integrity.md).
+Output verification and the terminal publisher/Core contract are documented in
+[`docs/output-integrity.md`](docs/output-integrity.md).
 
 ## Installation
 

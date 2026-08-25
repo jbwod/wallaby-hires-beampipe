@@ -65,6 +65,10 @@ def _graph_nodes(path):
     return json.loads(path.read_text(encoding="utf-8"))["nodeDataArray"]
 
 
+def _graph(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def test_docker_askapsoft_images_are_immutable():
     values = _field_values(DOCKER_GRAPH)
 
@@ -117,7 +121,7 @@ def test_one_source_fixture_has_an_explicit_nested_imager_budget():
     assert cimager_fields["Cimager.nchanpercore"] == 50
 
 
-def test_setonix_graph_closes_runtime_and_inventory_over_one_root():
+def test_setonix_graph_closes_runtime_over_one_root():
     values = _field_values(SETONIX_GRAPH)
     nodes = _graph_nodes(SETONIX_GRAPH)
     mosaic = next(node for node in nodes if node["name"] == "singularity linmos/mosiac")
@@ -132,7 +136,74 @@ def test_setonix_graph_closes_runtime_and_inventory_over_one_root():
     assert "wallaby_hires.extract_beam_root_setonix" in values
     assert 'cd "$ROOT"' in mosaic_command
     assert "--pwd /askapbuffer" in mosaic_command
-    assert "wallaby_hires inventory-staging-outputs" in mosaic_command
+    assert "wallaby_hires inventory-staging-outputs" not in mosaic_command
+
+
+def test_setonix_publisher_is_terminal_project_scoped_and_path_encoded():
+    graph = _graph(SETONIX_GRAPH)
+    nodes = graph["nodeDataArray"]
+    links = graph["linkDataArray"]
+    mosaic = next(node for node in nodes if node["name"] == "singularity linmos/mosiac")
+    image_drops = [node for node in nodes if node["name"] == "mosiac_image"]
+    ready = next(node for node in nodes if node["name"] == "wallaby publication ready")
+    publisher = next(
+        node for node in nodes if node["name"] == "beampipe-publish wallaby outputs"
+    )
+    inventory = next(node for node in nodes if node["name"] == "beampipe output inventory")
+    mosaic_fields = {field["name"]: field for field in mosaic["fields"]}
+    fields = {field["name"]: field for field in publisher["fields"]}
+    ready_fields = {field["name"]: field for field in ready["fields"]}
+    inventory_fields = {field["name"]: field for field in inventory["fields"]}
+
+    assert fields["func_name"]["value"] == "beampipe_pallette.beampipe_publish"
+    assert fields["func_code"]["value"] == ""
+    assert fields["expected_patterns_json"]["type"] == "String"
+    assert fields["expected_patterns_json"]["value"] == (
+        '["**/image.*.10arc.final_mosaic.fits",'
+        '"**/weights.*.10arc.final_mosaic.fits"]'
+    )
+    assert fields["publisher"]["value"] == "wallaby-hires/beampipe-publish"
+    assert fields["completion"]["encoding"] == "path"
+    assert fields["inventory"]["encoding"] == "path"
+    assert fields["allow_inline_publisher_token"]["value"] is False
+    assert ready_fields["filepath"]["value"] == "beampipe-publication-ready"
+    assert inventory_fields["filepath"]["value"] == "beampipe-output-inventory.json"
+    assert mosaic_fields["publication_ready"]["encoding"] == "path"
+    assert ': > "{publication_ready}"' in mosaic_fields["command"]["value"]
+    assert mosaic_fields["command"]["value"].endswith(
+        ': > "{publication_ready}"'
+    )
+
+    mosaic_targets = {
+        link["to"] for link in links if link["from"] == mosaic["id"]
+    }
+    assert {node["id"] for node in image_drops} <= mosaic_targets
+    assert ready["id"] in mosaic_targets
+    completion_links = [
+        link
+        for link in links
+        if link["to"] == publisher["id"]
+        and link["toPort"] == fields["completion"]["id"]
+    ]
+    assert len(completion_links) == 1
+    assert completion_links[0]["from"] == ready["id"]
+    ready_producers = [link for link in links if link["to"] == ready["id"]]
+    assert len(ready_producers) == 1
+    assert ready_producers[0]["from"] == mosaic["id"]
+    assert ready_producers[0]["fromPort"] == mosaic_fields["publication_ready"]["id"]
+    assert not any(
+        link["to"] == publisher["id"]
+        and link["toPort"] == fields["source_inventory"]["id"]
+        for link in links
+    )
+    inventory_links = [
+        link
+        for link in links
+        if link["from"] == publisher["id"]
+        and link["fromPort"] == fields["inventory"]["id"]
+    ]
+    assert len(inventory_links) == 1
+    assert inventory_links[0]["to"] == inventory["id"]
 
 
 def test_no_download_graph_selects_structural_manifest_admission_explicitly():
