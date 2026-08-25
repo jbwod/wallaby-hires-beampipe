@@ -5804,7 +5804,7 @@
             "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
             "commitHash": "0.1.0",
             "paletteDownloadUrl": "",
-            "dataHash": "565d24ccfc4c0081bd99bb8e5eef2d60dec8151318ee2e2f918ecfc1cc77f012",
+            "dataHash": "96433fe457491161e11824a2170783a221c182efd016c405fac5822a1b7d1642",
             "fields": [
                 {
                     "name": "func_name",
@@ -5987,9 +5987,9 @@
                 },
                 {
                     "name": "output_parser",
-                    "value": "raw",
-                    "defaultValue": "raw",
-                    "description": "Output port parsing: write raw bytes (manifest JSON) to the output drop.",
+                    "value": "pickle",
+                    "defaultValue": "pickle",
+                    "description": "Serialize the validated bytes once for supported DALiuGE downstream input loading.",
                     "readonly": false,
                     "type": "Select",
                     "precious": false,
@@ -6032,7 +6032,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "raw",
+                    "encoding": "pickle",
                     "id": "2c154e51-44ae-40cc-86ea-de45719523f3",
                     "parameterType": "ApplicationArgument",
                     "usage": "OutputPort"
@@ -6198,7 +6198,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "raw",
+                    "encoding": "pickle",
                     "id": "e07f0d57-5c4d-44fd-8c04-8c03fb3bc9b1",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputOutput"
@@ -6401,7 +6401,7 @@
                     "precious": false,
                     "options": [],
                     "positional": false,
-                    "encoding": "raw",
+                    "encoding": "pickle",
                     "id": "0a563771-372c-46eb-bfb6-1deb97b7b2c8",
                     "parameterType": "ApplicationArgument",
                     "usage": "InputPort"

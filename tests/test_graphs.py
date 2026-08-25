@@ -206,7 +206,7 @@ def test_setonix_publisher_is_terminal_project_scoped_and_path_encoded():
     assert inventory_links[0]["to"] == inventory["id"]
 
 
-def test_setonix_ingest_imports_hardened_raw_component():
+def test_setonix_ingest_imports_hardened_pickle_transport_component():
     graph = _graph(SETONIX_GRAPH)
     nodes = graph["nodeDataArray"]
     links = graph["linkDataArray"]
@@ -221,10 +221,10 @@ def test_setonix_ingest_imports_hardened_raw_component():
         "beampipe_pallette.beampipe_ingest"
     )
     assert ingest_fields["func_code"]["value"] == ""
-    assert ingest_fields["output_parser"]["value"] == "raw"
-    assert ingest_fields["manifest_bytes"]["encoding"] == "raw"
-    assert manifest_fields["manifest_bytes"]["encoding"] == "raw"
-    assert prestage_fields["manifest_bytes"]["encoding"] == "raw"
+    assert ingest_fields["output_parser"]["value"] == "pickle"
+    assert ingest_fields["manifest_bytes"]["encoding"] == "pickle"
+    assert manifest_fields["manifest_bytes"]["encoding"] == "pickle"
+    assert prestage_fields["manifest_bytes"]["encoding"] == "pickle"
 
     ingest_to_manifest = [
         link
