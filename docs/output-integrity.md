@@ -1,218 +1,125 @@
 # Output integrity and publication
 
-There are two related JSON contracts:
+The Setonix production graph finishes with the project-neutral
+`beampipe-publish` DALiuGE application from the separately installed
+`beampipe-pallette` package. Publication is part of the graph, not an operator
+step after DALiuGE.
 
-1. the Wallaby package creates and verifies a local **output inventory**; and
-2. a trusted publisher extends that inventory with durable-publication evidence
-   and submits the resulting **Core verification report**.
-
-`publish-local` does not submit to Core and does not manufacture an acknowledgement.
-
-## Wallaby output inventory
-
-`wallaby_hires.verify_output_products` is a DALiuGE-compatible function for the
-final graph boundary. The defaults require at least one match for each pattern:
+The Wallaby graph owns only its output policy:
 
 ```text
 **/image.*.10arc.final_mosaic.fits
 **/weights.*.10arc.final_mosaic.fits
 ```
 
-Every match must be a non-empty regular file below the output root, without a
-symbolic-link path. The function records its relative path, byte size, and lowercase
-SHA-256, then atomically writes `wallaby-output-inventory.json`.
+Both patterns must match at least one non-empty regular file under
+`BEAMPIPE_OUTPUT_ROOT`. The publisher independently scans the output tree,
+hashes the selected files, publishes them to the configured durable destination,
+reads every durable object back, and requires the size and SHA-256 to match.
 
-```json
-{
-  "schema": "wallaby-hires-output-inventory/v1",
-  "patterns": [
-    "**/image.*.10arc.final_mosaic.fits",
-    "**/weights.*.10arc.final_mosaic.fits"
-  ],
-  "pattern_counts": {
-    "**/image.*.10arc.final_mosaic.fits": 1,
-    "**/weights.*.10arc.final_mosaic.fits": 1
-  },
-  "products": [
-    {
-      "path": "HIPASSJ1318-21/image.HIPASSJ1318-21.10arc.final_mosaic.fits",
-      "bytes": 1234,
-      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    },
-    {
-      "path": "HIPASSJ1318-21/weights.HIPASSJ1318-21.10arc.final_mosaic.fits",
-      "bytes": 567,
-      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-    }
-  ],
-  "inventory_sha256": "0985ee8d5d0b59fbb48e51af0a033914560fcadcc6d4ad9dbb0443f182752d8d"
-}
+## Terminal graph contract
+
+The final mosaic application has a dedicated `publication_ready` path output.
+Its command creates that sentinel only after `linmos` exits successfully. The
+sentinel FileDROP is the publisher's single required completion input, so a
+missing or failed mosaic cannot trigger publication.
+
+The publisher writes and fsyncs a session-scoped
+`beampipe-output-inventory.json` FileDROP before it reports the receipt to Core.
+The emitted document and the durable report use:
+
+```text
+beampipe-output-inventory/v1
 ```
 
-`inventory_sha256` is SHA-256 over compact JSON for the `products` array with
-object keys sorted. The package emits products in relative-path order. It is not a
-hash of the pretty-printed inventory file. The digest does not cover `patterns` or
-`pattern_counts`, and inventory verification does not rediscover unlisted files;
-the trusted publisher must preserve the complete inventory and expected policy.
+Each product records its safe relative path, positive byte count, and lowercase
+SHA-256. The inventory also records the exact project patterns and their counts.
+Retries are idempotent: an existing byte-identical durable object is reused, but
+an object at the same destination key with different bytes fails closed.
 
-Use the same runtime interpreter for command-line checks:
+## Runtime values
+
+Dynamic values are deliberately absent from the graph. Beampipe supplies these
+to the DALiuGE runtime for each execution:
+
+| Variable | Meaning |
+| --- | --- |
+| `BEAMPIPE_OUTPUT_ROOT` | Completed Wallaby output tree to scan. |
+| `BEAMPIPE_OUTPUT_DESTINATION_URI` | Approved `file://` or `s3://` base destination. |
+| `BEAMPIPE_CORE_URL` | HTTPS Core origin or `/api/v2` base. |
+| `BEAMPIPE_EXECUTION_ID` | Execution UUID. |
+| `BEAMPIPE_EXECUTION_ATTEMPT` | Literal zero-based Core retry count. |
+| `BEAMPIPE_PUBLISHER_TOKEN_FILE` | Absolute path to the execution-scoped mode-0600 token. |
+
+The publisher always creates an execution-attempt namespace:
+
+```text
+<destination-base>/executions/<execution-uuid>/attempt-<retry-count>
+```
+
+Install `beampipe-pallette` with the same interpreter used by every DALiuGE
+executor. When `s3://` is selected, install its S3 extra:
 
 ```bash
-/daliuge/.venv/bin/python -m wallaby_hires inventory-outputs \
-  /path/to/session-output
-/daliuge/.venv/bin/python -m wallaby_hires verify-inventory \
-  /path/to/session-output \
-  /path/to/session-output/wallaby-output-inventory.json
+/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.1.0'
+/daliuge/.venv/bin/beampipe-publish --version
 ```
 
-Custom `--pattern` values replace the defaults and should be used only when the
-project's pinned output policy expects those product classes.
+Filesystem/project storage requires an absolute, non-root URI and rejects source
+and destination overlap. S3-compatible storage uses conditional create and full
+read-back verification, including multipart upload for products above 5 GiB.
+NGAS is not implemented by this release; selecting an unsupported URI fails
+before publication.
 
-## Publication
+## Publisher credential boundary
 
-For a durable POSIX mount, publication verifies the source inventory, copies each
-product through a temporary file, validates the copied SHA-256, atomically replaces
-the destination file, writes the inventory, and verifies it again:
+Core issues a short-lived credential restricted to the current execution,
+attempt, and `verify_outputs` action. The graph never receives a Core superuser
+credential. Inline bearer tokens are disabled in the production graph, Core
+callbacks require HTTPS, redirects are refused, and there is no TLS-disable
+option.
 
-```bash
-/daliuge/.venv/bin/python -m wallaby_hires publish-local \
-  /path/to/session-output \
-  /path/to/session-output/wallaby-output-inventory.json \
-  /durable/wallaby/HIPASSJ1318-21
+The private token file is deliberately retained after a valid acknowledgement
+so DALiuGE can replay the exact immutable receipt if a late DROP/session failure
+occurs. Core accepts only the byte-identical receipt for that execution attempt
+and revokes the credential during terminal reconciliation or expiry. Normal
+session/operator retention cleanup removes the retained file; outer-job EXIT
+unlinking is future runtime hardening.
+
+## Core acknowledgement
+
+The terminal component posts the publication receipt to:
+
+```text
+POST /api/v2/executions/<execution-uuid>/outputs/verify
 ```
 
-The destination must be a deployment-approved durable filesystem. The package does
-not choose an object-store endpoint, bucket, credentials, retention policy,
-overwrite policy, or publisher identity. An S3/Acacia publisher must implement the
-same re-hash-before-acknowledgement guarantee independently.
+It accepts success only when the response binds all of these values back to the
+request:
 
-## Beampipe Core verification report
+- execution UUID and retry count;
+- `output_state=verified`;
+- artifact kind `output_inventory`;
+- exact canonical report SHA-256 and durable URI; and
+- artifact execution attempt.
 
-For a production project configured with:
+Core stores the complete canonical receipt as an immutable output-inventory
+artifact. DALiuGE or scheduler completion alone remains insufficient when output
+verification is required; Core reaches terminal success only after both backend
+success and this verified receipt are present.
 
-```yaml
-output_verification:
-  required: true
-  inventory_schema: wallaby-hires-output-inventory/v1
-```
+## Failure and retry rules
 
-DALiuGE/scheduler completion leaves output verification pending. A trusted,
-authenticated publisher submits the complete Wallaby inventory plus these fields
-to `POST /api/v2/executions/{id}/outputs/verify`:
+- No match, an empty product, a symlink, an unsafe path, or a source mutation
+  stops before acknowledgement.
+- A durable read-back mismatch stops the run and does not report verification.
+- A callback timeout or lost response retains the token and inventory FileDROP so
+  the same receipt can be replayed.
+- A different receipt for an already consumed execution-attempt credential is
+  rejected.
+- The no-download graph creates test placeholders and cannot provide production
+  output evidence.
 
-```json
-{
-  "schema": "wallaby-hires-output-inventory/v1",
-  "patterns": [
-    "**/image.*.10arc.final_mosaic.fits",
-    "**/weights.*.10arc.final_mosaic.fits"
-  ],
-  "pattern_counts": {
-    "**/image.*.10arc.final_mosaic.fits": 1,
-    "**/weights.*.10arc.final_mosaic.fits": 1
-  },
-  "products": [
-    {
-      "path": "HIPASSJ1318-21/image.HIPASSJ1318-21.10arc.final_mosaic.fits",
-      "bytes": 1234,
-      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    },
-    {
-      "path": "HIPASSJ1318-21/weights.HIPASSJ1318-21.10arc.final_mosaic.fits",
-      "bytes": 567,
-      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-    }
-  ],
-  "inventory_sha256": "0985ee8d5d0b59fbb48e51af0a033914560fcadcc6d4ad9dbb0443f182752d8d",
-  "durable_destination_uri": "file:///durable/wallaby/run-01",
-  "publication": {
-    "acknowledged": true,
-    "publisher": "wallaby-publisher",
-    "receipt_id": "publication-01",
-    "published_at": "2026-08-22T00:00:00Z"
-  }
-}
-```
-
-Core requires the schema pinned on the execution, non-empty unique safe relative
-product paths, positive byte sizes, lowercase SHA-256 values, the canonical
-`inventory_sha256`, a durable `s3`, `gs`, `https`, or absolute `file` URI, and a
-positive authenticated publication acknowledgement. `patterns` and
-`pattern_counts` remain part of the full Wallaby v1 report.
-
-Core stores the full report as an immutable `output_inventory` artifact. The
-artifact's own SHA-256 covers canonical JSON for the **whole report** and therefore
-is expected to differ from `inventory_sha256`, which covers only `products`.
-
-Core validates report shape and acknowledgement but cannot read the destination.
-The trusted publisher is responsible for re-hashing durable objects before it
-acknowledges publication and must protect its superuser credential.
-
-<figure class="bp-diagram" aria-labelledby="output-trust-flow-title">
-  <figcaption id="output-trust-flow-title">
-    <strong>Required production target state; publication/reporting is not yet
-    graph-wired or completed live.</strong> Core accepts a publication report only after the
-    trusted publisher has re-hashed the durable destination.
-  </figcaption>
-  <ol class="bp-flow bp-flow--publication">
-    <li>
-      <span class="bp-flow__eyebrow">DALiuGE runtime</span>
-      <strong>Real ASKAPsoft mosaic</strong>
-      <span>Non-empty image and weights</span>
-      <small>Scheduler success alone is insufficient</small>
-    </li>
-    <li class="bp-flow__gap">
-      <span class="bp-flow__eyebrow">Setonix graph postcondition</span>
-      <strong>Wallaby verifier</strong>
-      <span>Paths, sizes, product SHA-256 values</span>
-      <small><code>inventory_sha256</code> covers canonical products only</small>
-    </li>
-    <li class="bp-flow__publisher">
-      <span class="bp-flow__eyebrow">Trusted publisher boundary</span>
-      <strong>Verify, publish, then read back</strong>
-      <span>Validate the source inventory before copying</span>
-      <div class="bp-durable-store">
-        <span class="bp-durable-store__arrow" aria-hidden="true">⇅</span>
-        <strong>Approved durable store</strong>
-        <small>Atomic copy, destination re-hash, publication receipt</small>
-      </div>
-      <small>Add the durable URI and acknowledge only after hashes match</small>
-    </li>
-    <li>
-      <span class="bp-flow__eyebrow">Beampipe Core</span>
-      <strong>Authenticated verify report</strong>
-      <span>Validate schema, auth, digest, URI, acknowledgement</span>
-      <small>Artifact SHA-256 covers the whole report; resolve output state</small>
-    </li>
-  </ol>
-  <p class="bp-stop-branch">
-    <strong>Stop branch:</strong> no-download stubs produce zero-byte placeholders
-    → not output evidence → do not publish or submit a Core verification report.
-  </p>
-  <p class="bp-diagram__note">
-    Core does not read the durable store. The authenticated publisher's verified
-    acknowledgement is the storage trust root. The Setonix graph now creates the
-    local inventory after mosaic; publication and authenticated reporting remain
-    outside the graph.
-  </p>
-</figure>
-
-## Remaining publication and reporting gap
-
-The Setonix production graph invokes `inventory-staging-outputs` only after the
-real ASKAPsoft mosaic command succeeds. That command requires the configured
-absolute staging root, rejects absent/empty image or weights products, and writes
-`wallaby-output-inventory.json` there. The no-download graph intentionally creates
-zero-byte placeholders and sets output verification to `required: false`; it
-cannot be used as output evidence.
-
-Before Beampipe treats a production execution as successful, deployment must:
-
-1. retain and independently validate the graph-created local inventory;
-2. publish to durable storage and re-hash the destination;
-3. construct and submit the authenticated Core report; and
-4. verify that Core records the `output_inventory` artifact and terminal output
-   state.
-
-Until that wiring exists and has completed live, scheduler/DALiuGE completion is
-not proof that durable science products exist.
+The standalone package README defines the generic glob grammar, storage adapter,
+receipt-size, HTTP, and token-file rules. This document records only the
+Wallaby-specific patterns and production graph wiring.

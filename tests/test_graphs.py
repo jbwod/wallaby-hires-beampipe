@@ -206,6 +206,42 @@ def test_setonix_publisher_is_terminal_project_scoped_and_path_encoded():
     assert inventory_links[0]["to"] == inventory["id"]
 
 
+def test_setonix_ingest_imports_hardened_raw_component():
+    graph = _graph(SETONIX_GRAPH)
+    nodes = graph["nodeDataArray"]
+    links = graph["linkDataArray"]
+    ingest = next(node for node in nodes if node["name"] == "beampipe-ingest")
+    manifest_drop = next(node for node in nodes if node["name"] == "manifest_bytes")
+    prestage = next(node for node in nodes if node["name"] == "prestage_manifest_inputs")
+    ingest_fields = {field["name"]: field for field in ingest["fields"]}
+    manifest_fields = {field["name"]: field for field in manifest_drop["fields"]}
+    prestage_fields = {field["name"]: field for field in prestage["fields"]}
+
+    assert ingest_fields["func_name"]["value"] == (
+        "beampipe_pallette.beampipe_ingest"
+    )
+    assert ingest_fields["func_code"]["value"] == ""
+    assert ingest_fields["output_parser"]["value"] == "raw"
+    assert ingest_fields["manifest_bytes"]["encoding"] == "raw"
+    assert manifest_fields["manifest_bytes"]["encoding"] == "raw"
+    assert prestage_fields["manifest_bytes"]["encoding"] == "raw"
+
+    ingest_to_manifest = [
+        link
+        for link in links
+        if link["from"] == ingest["id"] and link["to"] == manifest_drop["id"]
+    ]
+    manifest_to_prestage = [
+        link
+        for link in links
+        if link["from"] == manifest_drop["id"] and link["to"] == prestage["id"]
+    ]
+    assert len(ingest_to_manifest) == 1
+    assert ingest_to_manifest[0]["fromPort"] == ingest_fields["manifest_bytes"]["id"]
+    assert len(manifest_to_prestage) == 1
+    assert manifest_to_prestage[0]["toPort"] == prestage_fields["manifest_bytes"]["id"]
+
+
 def test_no_download_graph_selects_structural_manifest_admission_explicitly():
     values = _field_values(NO_DOWNLOAD_GRAPH)
 

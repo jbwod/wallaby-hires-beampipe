@@ -78,21 +78,23 @@ install the same artifact everywhere:
 ```bash
 python3 -m build --wheel
 python3 -m twine check dist/*
-sha256sum dist/wallaby_hires-0.1.6-py3-none-any.whl
+sha256sum dist/wallaby_hires-0.1.18-py3-none-any.whl
 ```
 
 Copy the wheel into each DALiuGE container, then run:
 
 ```bash
 /daliuge/.venv/bin/python -m pip install \
-  --disable-pip-version-check --force-reinstall --no-deps \
-  /tmp/wallaby_hires-0.1.6-py3-none-any.whl
+  --disable-pip-version-check --force-reinstall \
+  /tmp/beampipe_pallette-0.1.0-py3-none-any.whl \
+  /tmp/wallaby_hires-0.1.18-py3-none-any.whl
+/daliuge/.venv/bin/beampipe-publish --version
 ```
 
 For an offline cluster, build and hash the wheel on a connected build host, move it
 through the site's approved artifact path, and verify the hash before installation.
 A PyPI install is appropriate only when the release exists and is pinned, for
-example `wallaby-hires==0.1.6`.
+example `wallaby-hires==0.1.18` and `beampipe-pallette==0.1.0`.
 
 `docker exec` installs are development state and disappear when a container is
 recreated. Production should bake the hash-pinned wheel into one pinned DALiuGE
@@ -314,7 +316,8 @@ or component graphs as a production substitute.
 
 ## End-to-end verification checklist
 
-1. Verify the identical `wallaby-hires` version and import path in every executor.
+1. Verify identical `wallaby-hires` and `beampipe-pallette` versions and import
+   paths in every executor.
 2. Validate the manifest and apply the graph-specific production/no-download
    preflight in the [manifest contract](manifest-contract.md).
 3. Confirm the graph bytes match the project-config SHA-256.
@@ -322,10 +325,10 @@ or component graphs as a production substitute.
 5. Translate, create the session, deploy, and poll until a terminal state.
 6. Require terminal success **and** no error drops; retain the session identifiers
    and sanitized poll evidence.
-7. For production, retain the graph-created `wallaby-output-inventory.json`,
-   publish its non-empty image and weights, re-hash the destination, and submit
-   the trusted Core report described in
-   [output integrity](output-integrity.md).
+7. For production, confirm the terminal `beampipe-publish` node receives the
+   post-mosaic completion sentinel, emits `beampipe-output-inventory.json`,
+   re-reads the durable image and weights, and submits its execution-scoped Core
+   receipt as described in [output integrity](output-integrity.md).
 8. Confirm Core records the output-inventory artifact and terminal success. A
    scheduler/DALiuGE success alone is insufficient when output verification is
    required.
