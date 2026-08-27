@@ -15,6 +15,14 @@ ASKAPSOFT_DIGEST = (
     "csirocass/askapsoft@"
     "sha256:2b0cf3bac871664095cdfc9b13a6f438163d00dc344c3c1db8fcde4eef1aed65"
 )
+PUBLISH_PATTERNS_JSON = (
+    '["**/image.*.10arc.final_mosaic.fits",' '"**/weights.*.10arc.final_mosaic.fits"]'
+)
+PUBLISH_PALETTE_URL = (
+    "https://raw.githubusercontent.com/jbwod/beampipe-pallette/"
+    "v0.2.0/daliuge/palettes/beampipe.palette"
+)
+PUBLISH_PALETTE_HASH = "f52909d91d5f581351755cce8e4039e49b686f9d396cef614c58e18897d40a7b"
 DATA_FIXTURE_SUFFIXES = {
     ".csv",
     ".graph",
@@ -139,71 +147,126 @@ def test_setonix_graph_closes_runtime_over_one_root():
     assert "wallaby_hires inventory-staging-outputs" not in mosaic_command
 
 
-def test_setonix_publisher_is_terminal_project_scoped_and_path_encoded():
+def test_setonix_publisher_is_native_terminal_and_translator_compatible():
     graph = _graph(SETONIX_GRAPH)
     nodes = graph["nodeDataArray"]
     links = graph["linkDataArray"]
     mosaic = next(node for node in nodes if node["name"] == "singularity linmos/mosiac")
     image_drops = [node for node in nodes if node["name"] == "mosiac_image"]
-    ready = next(node for node in nodes if node["name"] == "wallaby publication ready")
-    publisher = next(
-        node for node in nodes if node["name"] == "beampipe-publish wallaby outputs"
-    )
-    inventory = next(node for node in nodes if node["name"] == "beampipe output inventory")
+    ready = next(node for node in nodes if node["name"] == "publication ready")
+    publisher = next(node for node in nodes if node["name"] == "beampipe-publish")
+    inventory = next(node for node in nodes if node["name"] == "output inventory")
     mosaic_fields = {field["name"]: field for field in mosaic["fields"]}
     fields = {field["name"]: field for field in publisher["fields"]}
     ready_fields = {field["name"]: field for field in ready["fields"]}
     inventory_fields = {field["name"]: field for field in inventory["fields"]}
 
-    assert fields["func_name"]["value"] == "beampipe_pallette.beampipe_publish"
-    assert fields["func_code"]["value"] == ""
+    assert graph["modelData"]["numLGNodes"] == len(nodes)
+    assert publisher["category"] == "DALiuGEApp"
+    assert publisher["categoryType"] == "Application"
+    assert fields["dropclass"]["value"] == "beampipe_pallette.apps.BeampipePublishApp"
+    assert publisher["commitHash"] == "0.2.0"
+    assert publisher["paletteDownloadUrl"] == PUBLISH_PALETTE_URL
+    assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
+    assert set(fields) == {
+        "completion",
+        "inventory",
+        "expected_patterns_json",
+        "log_level",
+        "dropclass",
+        "base_name",
+        "execution_time",
+        "num_cpus",
+        "group_start",
+        "input_error_threshold",
+        "n_tries",
+    }
     assert fields["expected_patterns_json"]["type"] == "String"
-    assert fields["expected_patterns_json"]["value"] == (
-        '["**/image.*.10arc.final_mosaic.fits",'
-        '"**/weights.*.10arc.final_mosaic.fits"]'
+    assert fields["expected_patterns_json"]["value"] == PUBLISH_PATTERNS_JSON
+    assert fields["completion"]["id"] == "93045d76-bad3-53fa-aeae-a9f2566b0f53"
+    assert fields["inventory"]["id"] == "4563bd54-8666-5d62-b01d-ab1672490702"
+    assert fields["expected_patterns_json"]["id"] == (
+        "2db1aa2c-b185-57ee-8f75-1680a7d2ecd8"
     )
-    assert fields["publisher"]["value"] == "wallaby-hires/beampipe-publish"
-    assert fields["completion"]["encoding"] == "path"
-    assert fields["inventory"]["encoding"] == "path"
-    assert fields["allow_inline_publisher_token"]["value"] is False
+    assert fields["completion"]["usage"] == "InputPort"
+    assert fields["inventory"]["usage"] == "OutputPort"
+    assert fields["expected_patterns_json"]["usage"] == "NoPort"
+    assert fields["completion"]["encoding"] == "pickle"
+    assert fields["inventory"]["encoding"] == "pickle"
     assert ready_fields["filepath"]["value"] == "beampipe-publication-ready"
     assert inventory_fields["filepath"]["value"] == "beampipe-output-inventory.json"
+    assert ready_fields["publication_ready"]["usage"] == "InputPort"
+    assert ready_fields["completion"]["usage"] == "OutputPort"
+    assert inventory_fields["inventory"]["usage"] == "InputPort"
     assert mosaic_fields["publication_ready"]["encoding"] == "path"
     assert ': > "{publication_ready}"' in mosaic_fields["command"]["value"]
-    assert mosaic_fields["command"]["value"].endswith(
-        ': > "{publication_ready}"'
-    )
+    assert mosaic_fields["command"]["value"].endswith(': > "{publication_ready}"')
 
-    mosaic_targets = {
-        link["to"] for link in links if link["from"] == mosaic["id"]
-    }
+    mosaic_targets = {link["to"] for link in links if link["from"] == mosaic["id"]}
     assert {node["id"] for node in image_drops} <= mosaic_targets
     assert ready["id"] in mosaic_targets
-    completion_links = [
+    mosaic_to_ready = [
         link
         for link in links
-        if link["to"] == publisher["id"]
-        and link["toPort"] == fields["completion"]["id"]
+        if link["from"] == mosaic["id"] and link["to"] == ready["id"]
     ]
-    assert len(completion_links) == 1
-    assert completion_links[0]["from"] == ready["id"]
-    ready_producers = [link for link in links if link["to"] == ready["id"]]
-    assert len(ready_producers) == 1
-    assert ready_producers[0]["from"] == mosaic["id"]
-    assert ready_producers[0]["fromPort"] == mosaic_fields["publication_ready"]["id"]
-    assert not any(
-        link["to"] == publisher["id"]
-        and link["toPort"] == fields["source_inventory"]["id"]
+    ready_to_publisher = [
+        link
         for link in links
+        if link["from"] == ready["id"] and link["to"] == publisher["id"]
+    ]
+    publisher_to_inventory = [
+        link
+        for link in links
+        if link["from"] == publisher["id"] and link["to"] == inventory["id"]
+    ]
+    assert len(mosaic_to_ready) == 1
+    assert mosaic_to_ready[0]["fromPort"] == mosaic_fields["publication_ready"]["id"]
+    assert mosaic_to_ready[0]["toPort"] == ready_fields["publication_ready"]["id"]
+    assert len(ready_to_publisher) == 1
+    assert ready_to_publisher[0]["fromPort"] == ready_fields["completion"]["id"]
+    assert ready_to_publisher[0]["toPort"] == fields["completion"]["id"]
+    assert len(publisher_to_inventory) == 1
+    assert publisher_to_inventory[0]["fromPort"] == fields["inventory"]["id"]
+    assert publisher_to_inventory[0]["toPort"] == inventory_fields["inventory"]["id"]
+    assert not any(link["from"] == inventory["id"] for link in links)
+
+    # EAGLE and the translator see a compact alternating app/data chain with
+    # every link using an output-capable source and input-capable target port.
+    node_by_id = {node["id"]: node for node in nodes}
+    field_by_id = {
+        field["id"]: field for node in nodes for field in node.get("fields", [])
+    }
+    for link in mosaic_to_ready + ready_to_publisher + publisher_to_inventory:
+        assert (
+            node_by_id[link["from"]]["categoryType"]
+            != node_by_id[link["to"]]["categoryType"]
+        )
+        assert field_by_id[link["fromPort"]]["usage"] in {
+            "OutputPort",
+            "InputOutput",
+        }
+        assert field_by_id[link["toPort"]]["usage"] in {
+            "InputPort",
+            "InputOutput",
+        }
+    assert mosaic["x"] < ready["x"] < publisher["x"] < inventory["x"]
+    assert (
+        max(
+            ready["x"] - mosaic["x"],
+            publisher["x"] - ready["x"],
+            inventory["x"] - publisher["x"],
+        )
+        < 300
     )
-    inventory_links = [
-        link
-        for link in links
-        if link["from"] == publisher["id"]
-        and link["fromPort"] == fields["inventory"]["id"]
-    ]
-    assert len(inventory_links) == 1
-    assert inventory_links[0]["to"] == inventory["id"]
+    assert (
+        max(
+            abs(ready["y"] - mosaic["y"]),
+            abs(publisher["y"] - mosaic["y"]),
+            abs(inventory["y"] - mosaic["y"]),
+        )
+        < 20
+    )
 
 
 def test_setonix_ingest_imports_hardened_pickle_transport_component():
@@ -217,9 +280,7 @@ def test_setonix_ingest_imports_hardened_pickle_transport_component():
     manifest_fields = {field["name"]: field for field in manifest_drop["fields"]}
     prestage_fields = {field["name"]: field for field in prestage["fields"]}
 
-    assert ingest_fields["func_name"]["value"] == (
-        "beampipe_pallette.beampipe_ingest"
-    )
+    assert ingest_fields["func_name"]["value"] == "beampipe_pallette.beampipe_ingest"
     assert ingest_fields["func_code"]["value"] == ""
     assert ingest_fields["output_parser"]["value"] == "pickle"
     assert ingest_fields["manifest_bytes"]["encoding"] == "pickle"

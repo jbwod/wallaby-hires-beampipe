@@ -6,7 +6,7 @@ authors = [{ name = "ICRAR and WALLABY contributors" }]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10,<3.14"
-dependencies = ["beampipe-pallette>=0.1,<0.2"]
+dependencies = ["beampipe-pallette>=0.2,<0.3"]
 
 [project.scripts]
 wallaby_hires = "wallaby_hires.__main__:entrypoint"

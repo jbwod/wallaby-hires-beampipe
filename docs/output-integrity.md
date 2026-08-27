@@ -24,8 +24,12 @@ Its command creates that sentinel only after `linmos` exits successfully. The
 sentinel FileDROP is the publisher's single required completion input, so a
 missing or failed mosaic cannot trigger publication.
 
-The publisher writes and fsyncs a session-scoped
-`beampipe-output-inventory.json` FileDROP before it reports the receipt to Core.
+The publisher is the native `beampipe_pallette.apps.BeampipePublishApp`
+barrier application. In EAGLE it exposes only the completion input, inventory
+output, and Wallaby-owned pattern policy; storage, execution identity, Core, and
+credential settings cannot be edited into the graph. It writes and fsyncs a
+session-scoped `beampipe-output-inventory.json` FileDROP before it reports the
+receipt to Core.
 The emitted document and the durable report use:
 
 ```text
@@ -61,7 +65,7 @@ Install `beampipe-pallette` with the same interpreter used by every DALiuGE
 executor. When `s3://` is selected, install its S3 extra:
 
 ```bash
-/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.1.0'
+/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.2.0'
 /daliuge/.venv/bin/beampipe-publish --version
 ```
 

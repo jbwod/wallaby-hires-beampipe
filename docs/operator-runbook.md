@@ -86,7 +86,7 @@ Copy the wheel into each DALiuGE container, then run:
 ```bash
 /daliuge/.venv/bin/python -m pip install \
   --disable-pip-version-check --force-reinstall \
-  /tmp/beampipe_pallette-0.1.0-py3-none-any.whl \
+  /tmp/beampipe_pallette-0.2.0-py3-none-any.whl \
   /tmp/wallaby_hires-0.1.18-py3-none-any.whl
 /daliuge/.venv/bin/beampipe-publish --version
 ```
@@ -94,7 +94,7 @@ Copy the wheel into each DALiuGE container, then run:
 For an offline cluster, build and hash the wheel on a connected build host, move it
 through the site's approved artifact path, and verify the hash before installation.
 A PyPI install is appropriate only when the release exists and is pinned, for
-example `wallaby-hires==0.1.18` and `beampipe-pallette==0.1.0`.
+example `wallaby-hires==0.1.18` and `beampipe-pallette==0.2.0`.
 
 `docker exec` installs are development state and disappear when a container is
 recreated. Production should bake the hash-pinned wheel into one pinned DALiuGE

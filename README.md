@@ -205,7 +205,7 @@ Package metadata supports Python 3.10 through 3.13; CI exercises 3.10 and 3.12.
 The distribution name is `wallaby-hires`, while the import package and command are
 `wallaby_hires`. Poetry is not required at runtime.
 
-Install with the **same interpreter that executes DALiuGE PyFunc apps**. For the
+Install with the **same interpreter that executes DALiuGE applications**. For the
 standard DALiuGE containers used by the local E2E, that command is:
 
 ```bash
