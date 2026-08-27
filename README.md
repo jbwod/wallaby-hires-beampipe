@@ -176,10 +176,11 @@ pickle-encoded `manifest_bytes` FileDROP for the existing Wallaby PyFunc
 prestage step. No manifest loader code or credentials are embedded in the
 graph.
 
-The no-download test graph has been exercised end to end against a live local
-DALiuGE REST deployment. The current Setonix graph has been statically validated,
-but this revision has **not** completed a live Setonix/SLURM science run because an
-allocation and deployment-managed SIF were unavailable. See the
+An earlier no-download graph was exercised end to end against a live local
+DALiuGE REST deployment. The current 0.4 receipt-handoff revision has a local
+runner and static translation/test evidence but has not yet repeated that live
+smoke. The current Setonix graph has been statically validated, but this revision
+has **not** completed a live Setonix/SLURM science run. See the
 [operator runbook](docs/operator-runbook.md#validation-status) for the exact
 evidence boundary.
 

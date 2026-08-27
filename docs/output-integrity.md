@@ -27,9 +27,9 @@ missing or failed mosaic cannot trigger publication.
 The publisher is the native `beampipe_pallette.apps.BeampipePublishApp`
 barrier application. In EAGLE it exposes only the completion input, inventory
 output, and Wallaby-owned pattern policy; storage, execution identity, Core, and
-credential settings cannot be edited into the graph. It writes and fsyncs a
-session-scoped `beampipe-output-inventory.json` FileDROP before it reports the
-receipt to Core.
+handoff settings cannot be edited into the graph. It writes and fsyncs a
+session-scoped `beampipe-output-inventory.json` FileDROP, then atomically writes
+the byte-identical receipt to the control-plane handoff path.
 The emitted document and the durable report use:
 
 ```text
@@ -50,10 +50,9 @@ to the DALiuGE runtime for each execution:
 | --- | --- |
 | `BEAMPIPE_OUTPUT_ROOT` | Completed Wallaby output tree to scan. |
 | `BEAMPIPE_OUTPUT_DESTINATION_URI` | Approved `file://` or `s3://` base destination. |
-| `BEAMPIPE_CORE_URL` | HTTPS Core origin or `/api/v2` base. |
 | `BEAMPIPE_EXECUTION_ID` | Execution UUID. |
 | `BEAMPIPE_EXECUTION_ATTEMPT` | Literal zero-based Core retry count. |
-| `BEAMPIPE_PUBLISHER_TOKEN_FILE` | Absolute path to the execution-scoped mode-0600 token. |
+| `BEAMPIPE_OUTPUT_INVENTORY_HANDOFF_PATH` | Required absolute receipt path prepared in the retained session directory and outside the output tree. |
 
 The publisher always creates an execution-attempt namespace:
 
@@ -65,7 +64,7 @@ Install `beampipe-pallette` with the same interpreter used by every DALiuGE
 executor. When `s3://` is selected, install its S3 extra:
 
 ```bash
-/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.3.0'
+/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.4.0'
 /daliuge/.venv/bin/beampipe-publish --version
 ```
 
@@ -75,55 +74,49 @@ read-back verification, including multipart upload for products above 5 GiB.
 NGAS is not implemented by this release; selecting an unsupported URI fails
 before publication.
 
-## Publisher credential boundary
+## Control-plane boundary
 
-Core issues a short-lived credential restricted to the current execution,
-attempt, and `verify_outputs` action. The graph never receives a Core superuser
-credential. Inline bearer tokens are disabled in the production graph, Core
-callbacks require HTTPS, redirects are refused, and there is no TLS-disable
-option.
+The publisher never receives a Core URL or credential. The transport constructs
+the deterministic handoff path under the retained remote session directory,
+creates its parent before DALiuGE starts, and supplies only that path to the
+runtime. The publisher requires an absolute, non-root, non-symlink path outside
+`BEAMPIPE_OUTPUT_ROOT`; it creates the receipt file atomically, reads it back,
+and fsyncs both file and parent directory. Existing byte-identical evidence is
+reusable, while conflicting bytes fail closed.
 
-The private token file is deliberately retained after a valid acknowledgement
-so DALiuGE can replay the exact immutable receipt if a late DROP/session failure
-occurs. Core accepts only the byte-identical receipt for that execution attempt
-and revokes the credential during terminal reconciliation or expiry. Normal
-session/operator retention cleanup removes the retained file; outer-job EXIT
-unlinking is future runtime hardening.
-
-## Core acknowledgement
-
-The terminal component posts the publication receipt to:
+Each retry receives its own immutable path:
 
 ```text
-POST /api/v2/executions/<execution-uuid>/outputs/verify
+<remote-session-dir>/.beampipe/publication/attempt-<retry-count>/beampipe-output-inventory.json
 ```
 
-It accepts success only when the response binds all of these values back to the
-request:
+## Core receipt ingestion
 
-- execution UUID and retry count;
-- `output_state=verified`;
-- artifact kind `output_inventory`;
-- exact canonical report SHA-256 and durable URI; and
-- artifact execution attempt.
+The terminal component does not call Core. After remote execution, the transport
+reads the canonical handoff bytes and submits them through Core's trusted
+control-plane path. The document binds the evidence to:
+
+- top-level canonical `execution_id`;
+- top-level zero-based `execution_attempt`;
+- the exact output patterns, counts, product paths, sizes, and SHA-256 values;
+- the durable destination URI and inventory digest; and
+- deterministic publisher receipt identity.
 
 Core stores the complete canonical receipt as an immutable output-inventory
 artifact. DALiuGE or scheduler completion alone remains insufficient when output
 verification is required; Core reaches terminal success only after both backend
-success and this verified receipt are present.
+success and this transported, verified receipt are present.
 
 ## Failure and retry rules
 
 - No match, an empty product, a symlink, an unsafe path, or a source mutation
-  stops before acknowledgement.
+  stops before handoff.
 - A durable read-back mismatch stops the run and does not report verification.
-- A callback timeout or lost response retains the token and inventory FileDROP so
-  the same receipt can be replayed.
-- A different receipt for an already consumed execution-attempt credential is
-  rejected.
-- The no-download graph creates test placeholders and cannot provide production
-  output evidence.
+- A handoff persistence or read-back failure fails the DALiuGE terminal app.
+- A different receipt at the same execution-attempt handoff path is rejected.
+- The no-download graph exercises the same terminal contract with explicitly
+  synthetic placeholder outputs; those are qualification evidence only.
 
 The standalone package README defines the generic glob grammar, storage adapter,
-receipt-size, HTTP, and token-file rules. This document records only the
-Wallaby-specific patterns and production graph wiring.
+receipt-size, and handoff rules. This document records only the Wallaby-specific
+patterns and production graph wiring.

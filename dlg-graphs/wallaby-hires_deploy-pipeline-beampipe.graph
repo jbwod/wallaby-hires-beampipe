@@ -6543,9 +6543,9 @@
             "x": 458.0637895179624,
             "y": 1952.2339835407079,
             "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
-            "commitHash": "0.3.0",
-            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.3.0/daliuge/palettes/beampipe.palette",
-            "dataHash": "086dd223d6f630bb4edb5cf08b89a02aef13d39234f6f7d0f62d43bf0fb3dbd1",
+            "commitHash": "0.4.0",
+            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.4.0/daliuge/palettes/beampipe.palette",
+            "dataHash": "6f1983d02156811cb3b860a96c46ab80d7cbb3c4a35e350187690e500d264de4",
             "fields": [
                 {
                     "defaultValue": "",

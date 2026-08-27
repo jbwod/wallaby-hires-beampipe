@@ -13,8 +13,12 @@ The following path was exercised against live local services:
 - translation used `http://dlg-tm.desk`;
 - direct deployment reached `http://dlg-dim.desk:80` through Traefik, while the
   Translator Manager was told to use its Docker-network route `dlg-dim:8001`; and
-- the current no-download Beampipe graph reached a terminal successful DALiuGE
+- an earlier no-download Beampipe graph reached a terminal successful DALiuGE
   session with no error drops.
+
+The current 0.4 publisher uses an immutable session handoff. Its graph, runner,
+and translation/tests are validated statically; repeat the included local REST
+smoke before treating that changed terminal path as live evidence.
 
 The production Setonix/SLURM graph was **not** run live for this revision because
 the required Pawsey allocation and deployment-managed ASKAPsoft SIF were not
@@ -86,7 +90,7 @@ Copy the wheel into each DALiuGE container, then run:
 ```bash
 /daliuge/.venv/bin/python -m pip install \
   --disable-pip-version-check --force-reinstall \
-  /tmp/beampipe_pallette-0.3.0-py3-none-any.whl \
+  /tmp/beampipe_pallette-0.4.0-py3-none-any.whl \
   /tmp/wallaby_hires-0.1.18-py3-none-any.whl
 /daliuge/.venv/bin/beampipe-publish --version
 ```
@@ -94,7 +98,7 @@ Copy the wheel into each DALiuGE container, then run:
 For an offline cluster, build and hash the wheel on a connected build host, move it
 through the site's approved artifact path, and verify the hash before installation.
 A PyPI install is appropriate only when the release exists and is pinned, for
-example `wallaby-hires==0.1.18` and `beampipe-pallette==0.3.0`.
+example `wallaby-hires==0.1.18` and `beampipe-pallette==0.4.0`.
 
 `docker exec` installs are development state and disappear when a container is
 recreated. Production should bake the hash-pinned wheel into one pinned DALiuGE
@@ -141,10 +145,11 @@ base image and use that derived image for every manager and node service.
     </li>
   </ol>
   <p class="bp-diagram__note">
-    <strong>Evidence boundary:</strong> live evidence covers the local no-download
-    smoke only. Setonix/SLURM science execution has preflight/static validation
-    only. Translation can succeed before a PyFunc reaches a node with a missing or
-    stale package, and this flow does not prove ASKAPsoft or non-empty outputs.
+    <strong>Evidence boundary:</strong> live evidence covers an earlier local
+    no-download smoke. The current 0.4 handoff and Setonix/SLURM science paths
+    have static validation only. Translation can succeed before a PyFunc reaches
+    a node with a missing or stale package, and this flow does not prove ASKAPsoft
+    or non-empty science outputs.
   </p>
 </figure>
 

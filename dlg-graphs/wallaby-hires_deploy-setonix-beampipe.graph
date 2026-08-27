@@ -5802,9 +5802,9 @@
             "x": 458.0637895179624,
             "y": 1952.2339835407079,
             "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
-            "commitHash": "0.3.0",
-            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.3.0/daliuge/palettes/beampipe.palette",
-            "dataHash": "086dd223d6f630bb4edb5cf08b89a02aef13d39234f6f7d0f62d43bf0fb3dbd1",
+            "commitHash": "0.4.0",
+            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.4.0/daliuge/palettes/beampipe.palette",
+            "dataHash": "6f1983d02156811cb3b860a96c46ab80d7cbb3c4a35e350187690e500d264de4",
             "fields": [
                 {
                     "defaultValue": "",
@@ -10682,11 +10682,11 @@
             "categoryType": "Application",
             "id": "40118985-154f-5dab-b9ee-756ec86337e2",
             "name": "beampipe-publish",
-            "description": "Publish project-selected outputs to durable file or S3-compatible storage, verify every object by read-back, emit beampipe-output-inventory/v1, and report the scoped receipt to Core.",
+            "description": "Publish project-selected outputs to durable file or S3-compatible storage, verify every object by read-back, emit beampipe-output-inventory/v1, and return the receipt through the session handoff.",
             "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
-            "commitHash": "0.3.0",
-            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.3.0/daliuge/palettes/beampipe.palette",
-            "dataHash": "05cd5ef5ccd6c3a8de48707e07c931dfc967bdd287b6890efb25ff735ad75648",
+            "commitHash": "0.4.0",
+            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.4.0/daliuge/palettes/beampipe.palette",
+            "dataHash": "9e299fe2e241038cf1a4e54e1a22f82819402c944e03d15f67b15dc8607dee9b",
             "fields": [
                 {
                     "defaultValue": "",
@@ -10705,7 +10705,7 @@
                 },
                 {
                     "defaultValue": "",
-                    "description": "Canonical beampipe-output-inventory/v1 FileDROP, atomically written, read back, and fsynced before Core acknowledgement.",
+                    "description": "Canonical beampipe-output-inventory/v1 FileDROP, atomically written, read back, and fsynced before session handoff.",
                     "encoding": "pickle",
                     "id": "4563bd54-8666-5d62-b01d-ab1672490702",
                     "name": "inventory",
@@ -10719,7 +10719,7 @@
                     "value": ""
                 },
                 {
-                    "defaultValue": "[\"**/image.*.10arc.final_mosaic.fits\",\"**/weights.*.10arc.final_mosaic.fits\"]",
+                    "defaultValue": "",
                     "description": "Required project-owned JSON array of output glob patterns.",
                     "encoding": "pickle",
                     "id": "2db1aa2c-b185-57ee-8f75-1680a7d2ecd8",

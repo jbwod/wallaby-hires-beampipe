@@ -169,8 +169,8 @@ Consequently:
 
 A successful no-download session proves that the selected manifest/control-plane
 path can translate, deploy, execute, publish its synthetic products, and close
-the Core output-verification transition. It does **not** prove data staging,
-ASKAPsoft, Setonix, or valid science products.
+the DALiuGE-side receipt handoff. It does **not** prove Core receipt ingestion,
+data staging, ASKAPsoft, Setonix, or valid science products.
 
 From an environment containing DALiuGE Engine and Translator 6.6, run the same
 path over disposable loopback REST services with:
@@ -180,17 +180,11 @@ python scripts/local_nodownload_rest_smoke.py
 ```
 
 The runner starts isolated NM, DIM, and TM processes, uses the real TM `/unroll`
-and DIM session REST APIs, publishes to a temporary file destination, and sends
-the receipt to a strict loopback HTTPS Core stand-in. It makes no CASDA, Setonix,
-or external-storage request.
-
-Do not point Core's current long-lived `rest_remote` deployment profile at this
-publisher-enabled graph yet. Core deliberately refuses to place publisher
-credentials in a physical graph and does not yet have a validated shared,
-execution-scoped credential-file contract for an existing remote DIM. Slurm
-delivery already has that secure path; the disposable runner is safe because it
-starts a dedicated NM with one execution's environment. Keeping this boundary
-explicit avoids turning a successful graph test into insecure token injection.
+and DIM session REST APIs, publishes to a temporary file destination, and
+verifies the atomic session handoff against both durable storage and the
+DALiuGE inventory FileDROP. It makes no Core, CASDA, Setonix, or external-storage
+request. Core transport and authentication are deliberately outside the graph
+and publisher process.
 
 The legacy `inputs.input_csv_url` plus `staged` URL-list shape exists for old
 graphs and should not be used by new Beampipe projects.

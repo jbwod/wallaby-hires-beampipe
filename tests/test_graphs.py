@@ -24,10 +24,10 @@ NO_DOWNLOAD_PUBLISH_PATTERNS_JSON = (
 )
 BEAMPIPE_PALETTE_URL = (
     "https://raw.githubusercontent.com/jbwod/beampipe-pallette/"
-    "v0.3.0/daliuge/palettes/beampipe.palette"
+    "v0.4.0/daliuge/palettes/beampipe.palette"
 )
-INGEST_PALETTE_HASH = "086dd223d6f630bb4edb5cf08b89a02aef13d39234f6f7d0f62d43bf0fb3dbd1"
-PUBLISH_PALETTE_HASH = "05cd5ef5ccd6c3a8de48707e07c931dfc967bdd287b6890efb25ff735ad75648"
+INGEST_PALETTE_HASH = "6f1983d02156811cb3b860a96c46ab80d7cbb3c4a35e350187690e500d264de4"
+PUBLISH_PALETTE_HASH = "9e299fe2e241038cf1a4e54e1a22f82819402c944e03d15f67b15dc8607dee9b"
 DATA_FIXTURE_SUFFIXES = {
     ".csv",
     ".graph",
@@ -170,7 +170,7 @@ def test_setonix_publisher_is_native_terminal_and_translator_compatible():
     assert publisher["category"] == "DALiuGEApp"
     assert publisher["categoryType"] == "Application"
     assert fields["dropclass"]["value"] == "beampipe_pallette.apps.BeampipePublishApp"
-    assert publisher["commitHash"] == "0.3.0"
+    assert publisher["commitHash"] == "0.4.0"
     assert publisher["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
     assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
     assert set(fields) == {
@@ -187,6 +187,7 @@ def test_setonix_publisher_is_native_terminal_and_translator_compatible():
         "n_tries",
     }
     assert fields["expected_patterns_json"]["type"] == "String"
+    assert fields["expected_patterns_json"]["defaultValue"] == ""
     assert fields["expected_patterns_json"]["value"] == PUBLISH_PATTERNS_JSON
     assert fields["completion"]["id"] == "93045d76-bad3-53fa-aeae-a9f2566b0f53"
     assert fields["inventory"]["id"] == "4563bd54-8666-5d62-b01d-ab1672490702"
@@ -289,7 +290,7 @@ def test_no_download_graph_publishes_synthetic_outputs_terminally():
 
     assert graph["modelData"]["numLGNodes"] == len(nodes)
     assert publisher["category"] == "DALiuGEApp"
-    assert publisher["commitHash"] == "0.3.0"
+    assert publisher["commitHash"] == "0.4.0"
     assert publisher["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
     assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
     assert publisher_fields["dropclass"]["value"] == (
@@ -298,6 +299,7 @@ def test_no_download_graph_publishes_synthetic_outputs_terminally():
     assert publisher_fields["expected_patterns_json"]["value"] == (
         NO_DOWNLOAD_PUBLISH_PATTERNS_JSON
     )
+    assert publisher_fields["expected_patterns_json"]["defaultValue"] == ""
     assert ready_fields["filepath"]["value"] == "beampipe-publication-ready"
     assert inventory_fields["filepath"]["value"] == ("beampipe-output-inventory.json")
 
@@ -360,7 +362,7 @@ def test_beampipe_graphs_use_native_hardened_manifest_transport():
         assert graph["modelData"]["numLGNodes"] == len(nodes)
         assert ingest["category"] == "DALiuGEApp"
         assert ingest["categoryType"] == "Application"
-        assert ingest["commitHash"] == "0.3.0"
+        assert ingest["commitHash"] == "0.4.0"
         assert ingest["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
         assert ingest["dataHash"] == INGEST_PALETTE_HASH
         assert ingest_fields["dropclass"]["value"] == (
