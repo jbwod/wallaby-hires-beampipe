@@ -3,6 +3,7 @@ import json
 import pytest
 
 from wallaby_hires.__main__ import main
+from wallaby_hires.funcs import mosaic
 from wallaby_hires.outputs import (
     OutputValidationError,
     build_output_inventory,
@@ -20,6 +21,17 @@ def _products(root):
     image.write_bytes(b"science-image")
     weights.write_bytes(b"science-weights")
     return image, weights
+
+
+def test_no_download_mosaic_creates_nonempty_synthetic_products(tmp_path, monkeypatch):
+    monkeypatch.setenv("BEAMPIPE_OUTPUT_ROOT", str(tmp_path))
+
+    mosaic()
+
+    image = tmp_path / "image.10arc.final_mosaic.fits"
+    weights = tmp_path / "weights.10arc.final_mosaic.fits"
+    assert image.read_bytes() == b"WALLABY no-download synthetic mosaic\n"
+    assert weights.read_bytes() == b"WALLABY no-download synthetic mosaic weights\n"
 
 
 def test_inventory_records_and_reverifies_nonempty_final_products(tmp_path):

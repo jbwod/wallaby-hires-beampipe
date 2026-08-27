@@ -161,15 +161,36 @@ Consequently:
 - no staged dataset, checksum, archive, MeasurementSet, or PB FITS is validated;
 - `credentials_ini_url` should be omitted because pre-staging will still download
   it even though the data-download apps are absent;
-- the stubs do not read real MeasurementSets and create zero-byte placeholder
-  files; and
-- the corresponding Beampipe project must keep output verification
-  `required: false` for this graph.
+- the stubs do not read real MeasurementSets; the final mosaic stub creates
+  small, explicitly synthetic products so the terminal publication contract can
+  be exercised; and
+- output verification covers only those synthetic products and must never be
+  treated as science-output qualification.
 
 A successful no-download session proves that the selected manifest/control-plane
-path can translate, deploy, and execute. It does **not** prove data staging,
-ASKAPsoft, Setonix, non-empty science products, durable publication, or the Core
-output-verification transition.
+path can translate, deploy, execute, publish its synthetic products, and close
+the Core output-verification transition. It does **not** prove data staging,
+ASKAPsoft, Setonix, or valid science products.
+
+From an environment containing DALiuGE Engine and Translator 6.6, run the same
+path over disposable loopback REST services with:
+
+```bash
+python scripts/local_nodownload_rest_smoke.py
+```
+
+The runner starts isolated NM, DIM, and TM processes, uses the real TM `/unroll`
+and DIM session REST APIs, publishes to a temporary file destination, and sends
+the receipt to a strict loopback HTTPS Core stand-in. It makes no CASDA, Setonix,
+or external-storage request.
+
+Do not point Core's current long-lived `rest_remote` deployment profile at this
+publisher-enabled graph yet. Core deliberately refuses to place publisher
+credentials in a physical graph and does not yet have a validated shared,
+execution-scoped credential-file contract for an existing remote DIM. Slurm
+delivery already has that secure path; the disposable runner is safe because it
+starts a dedicated NM with one execution's environment. Keeping this boundary
+explicit avoids turning a successful graph test into insecure token injection.
 
 The legacy `inputs.input_csv_url` plus `staged` URL-list shape exists for old
 graphs and should not be used by new Beampipe projects.

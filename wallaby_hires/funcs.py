@@ -976,10 +976,8 @@ def read_and_process_csv(filename: str) -> list:
         if not data:
             print(f"Warning: CSV file '{filename}' is empty.")
         else:
-            print(
-                f"CSV file '{filename}' successfully read and processed into a list of \
-                    dictionaries."
-            )
+            print(f"CSV file '{filename}' successfully read and processed into a list of \
+                    dictionaries.")
 
     return data
 
@@ -1875,34 +1873,40 @@ def mosaic():
     None
     """
 
+    # Keep smoke-test products inside the execution root when Core supplies it.
+    # These are deliberately small, synthetic payloads: they exercise terminal
+    # publication without pretending to be valid science data.
+    output_root = Path(os.environ.get("BEAMPIPE_OUTPUT_ROOT", "."))
+    output_root.mkdir(parents=True, exist_ok=True)
+
     # Base filename
     base_name = "image"
     extension = ".10arc.final_mosaic.fits"
-    filename = f"{base_name}{extension}"
+    filename = output_root / f"{base_name}{extension}"
     counter = 1
 
     # Check if the file already exists and find the next available filename
     while os.path.exists(filename):
         counter += 1
-        filename = f"{base_name}_{counter}{extension}"
+        filename = output_root / f"{base_name}_{counter}{extension}"
 
     # Create the new file
-    with open(filename, "w") as file:
-        file.write("")
+    with filename.open("w", encoding="utf-8") as file:
+        file.write("WALLABY no-download synthetic mosaic\n")
 
     # Repeat the same for weights
     weights_name = "weights"
-    weights_filename = f"{weights_name}{extension}"
+    weights_filename = output_root / f"{weights_name}{extension}"
     weights_counter = 1
 
     # Check if the file already exists and find the next available filename
     while os.path.exists(weights_filename):
         weights_counter += 1
-        weights_filename = f"{weights_name}_{weights_counter}{extension}"
+        weights_filename = output_root / f"{weights_name}_{weights_counter}{extension}"
 
     # Create the new file
-    with open(weights_filename, "w") as file:
-        file.write("")
+    with weights_filename.open("w", encoding="utf-8") as file:
+        file.write("WALLABY no-download synthetic mosaic weights\n")
 
     print("mosaic step complete")
     print(f"Output file created: {filename}")
@@ -2254,10 +2258,8 @@ def process_CSV_mosaic(filename: str) -> list:
 
     # Check if data is not empty and print a message
     if data:
-        print(
-            f"CSV file '{filename}' successfully read and processed into a list of \
-                dictionaries."
-        )
+        print(f"CSV file '{filename}' successfully read and processed into a list of \
+                dictionaries.")
     else:
         print(f"Warning: CSV file '{filename}' is empty.")
 
@@ -2326,10 +2328,8 @@ def process_CSV(filename: str) -> list:
         if not data:
             print(f"Warning: CSV file '{filename}' is empty.")
         else:
-            print(
-                f"CSV file '{filename}' successfully read and processed into a list of \
-                    dictionaries."
-            )
+            print(f"CSV file '{filename}' successfully read and processed into a list of \
+                    dictionaries.")
 
     return data
 

@@ -19,6 +19,9 @@ ASKAPSOFT_DIGEST = (
 PUBLISH_PATTERNS_JSON = (
     '["**/image.*.10arc.final_mosaic.fits",' '"**/weights.*.10arc.final_mosaic.fits"]'
 )
+NO_DOWNLOAD_PUBLISH_PATTERNS_JSON = (
+    '["**/image*.10arc.final_mosaic.fits",' '"**/weights*.10arc.final_mosaic.fits"]'
+)
 BEAMPIPE_PALETTE_URL = (
     "https://raw.githubusercontent.com/jbwod/beampipe-pallette/"
     "v0.3.0/daliuge/palettes/beampipe.palette"
@@ -271,15 +274,76 @@ def test_setonix_publisher_is_native_terminal_and_translator_compatible():
     )
 
 
+def test_no_download_graph_publishes_synthetic_outputs_terminally():
+    graph = _graph(NO_DOWNLOAD_GRAPH)
+    nodes = graph["nodeDataArray"]
+    links = graph["linkDataArray"]
+    mosaic = next(node for node in nodes if node["name"] == "mosaic")
+    ready = next(node for node in nodes if node["name"] == "publication ready")
+    publisher = next(node for node in nodes if node["name"] == "beampipe-publish")
+    inventory = next(node for node in nodes if node["name"] == "output inventory")
+    mosaic_fields = {field["name"]: field for field in mosaic["fields"]}
+    ready_fields = {field["name"]: field for field in ready["fields"]}
+    publisher_fields = {field["name"]: field for field in publisher["fields"]}
+    inventory_fields = {field["name"]: field for field in inventory["fields"]}
+
+    assert graph["modelData"]["numLGNodes"] == len(nodes)
+    assert publisher["category"] == "DALiuGEApp"
+    assert publisher["commitHash"] == "0.3.0"
+    assert publisher["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
+    assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
+    assert publisher_fields["dropclass"]["value"] == (
+        "beampipe_pallette.apps.BeampipePublishApp"
+    )
+    assert publisher_fields["expected_patterns_json"]["value"] == (
+        NO_DOWNLOAD_PUBLISH_PATTERNS_JSON
+    )
+    assert ready_fields["filepath"]["value"] == "beampipe-publication-ready"
+    assert inventory_fields["filepath"]["value"] == ("beampipe-output-inventory.json")
+
+    mosaic_to_ready = [
+        link
+        for link in links
+        if link["from"] == mosaic["id"] and link["to"] == ready["id"]
+    ]
+    ready_to_publisher = [
+        link
+        for link in links
+        if link["from"] == ready["id"] and link["to"] == publisher["id"]
+    ]
+    publisher_to_inventory = [
+        link
+        for link in links
+        if link["from"] == publisher["id"] and link["to"] == inventory["id"]
+    ]
+    assert len(mosaic_to_ready) == 1
+    assert mosaic_to_ready[0]["fromPort"] == mosaic_fields["c"]["id"]
+    assert mosaic_to_ready[0]["toPort"] == ready_fields["publication_ready"]["id"]
+    assert len(ready_to_publisher) == 1
+    assert ready_to_publisher[0]["fromPort"] == ready_fields["completion"]["id"]
+    assert ready_to_publisher[0]["toPort"] == publisher_fields["completion"]["id"]
+    assert len(publisher_to_inventory) == 1
+    assert publisher_to_inventory[0]["fromPort"] == publisher_fields["inventory"]["id"]
+    assert publisher_to_inventory[0]["toPort"] == inventory_fields["inventory"]["id"]
+    assert not any(link["from"] == inventory["id"] for link in links)
+    assert mosaic["x"] < ready["x"] < publisher["x"] < inventory["x"]
+    assert (
+        max(
+            abs(ready["y"] - mosaic["y"]),
+            abs(publisher["y"] - mosaic["y"]),
+            abs(inventory["y"] - mosaic["y"]),
+        )
+        < 20
+    )
+
+
 def test_beampipe_graphs_use_native_hardened_manifest_transport():
     for path in BEAMPIPE_GRAPHS:
         graph = _graph(path)
         nodes = graph["nodeDataArray"]
         links = graph["linkDataArray"]
         ingest = next(node for node in nodes if node["name"] == "beampipe-ingest")
-        manifest_drop = next(
-            node for node in nodes if node["name"] == "manifest_bytes"
-        )
+        manifest_drop = next(node for node in nodes if node["name"] == "manifest_bytes")
         prestage = next(
             node
             for node in nodes
@@ -309,9 +373,7 @@ def test_beampipe_graphs_use_native_hardened_manifest_transport():
             ingest_fields
         )
         assert manifest_drop["category"] == "File"
-        assert manifest_fields["dropclass"]["value"] == (
-            "dlg.data.drops.file.FileDROP"
-        )
+        assert manifest_fields["dropclass"]["value"] == ("dlg.data.drops.file.FileDROP")
         assert manifest_fields["filepath"]["value"] == "beampipe-manifest.pickle"
         assert manifest_fields["manifest_bytes"]["usage"] == "InputOutput"
         assert manifest_fields["manifest_bytes"]["encoding"] == "pickle"
