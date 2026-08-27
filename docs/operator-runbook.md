@@ -82,7 +82,7 @@ install the same artifact everywhere:
 ```bash
 python3 -m build --wheel
 python3 -m twine check dist/*
-sha256sum dist/wallaby_hires-0.1.18-py3-none-any.whl
+sha256sum dist/wallaby_hires-0.1.19-py3-none-any.whl
 ```
 
 Copy the wheel into each DALiuGE container, then run:
@@ -90,15 +90,15 @@ Copy the wheel into each DALiuGE container, then run:
 ```bash
 /daliuge/.venv/bin/python -m pip install \
   --disable-pip-version-check --force-reinstall \
-  /tmp/beampipe_pallette-0.4.0-py3-none-any.whl \
-  /tmp/wallaby_hires-0.1.18-py3-none-any.whl
+  /tmp/beampipe_palette-0.5.1-py3-none-any.whl \
+  /tmp/wallaby_hires-0.1.19-py3-none-any.whl
 /daliuge/.venv/bin/beampipe-publish --version
 ```
 
 For an offline cluster, build and hash the wheel on a connected build host, move it
 through the site's approved artifact path, and verify the hash before installation.
 A PyPI install is appropriate only when the release exists and is pinned, for
-example `wallaby-hires==0.1.18` and `beampipe-pallette==0.4.0`.
+example `wallaby-hires==0.1.19` and `beampipe-palette==0.5.1`.
 
 `docker exec` installs are development state and disappear when a container is
 recreated. Production should bake the hash-pinned wheel into one pinned DALiuGE
@@ -162,7 +162,7 @@ Run both checks in each container or node environment:
 /daliuge/.venv/bin/python -c \
   'import importlib.metadata as m, wallaby_hires; print(m.version("wallaby-hires"), wallaby_hires.__file__)'
 /daliuge/.venv/bin/python -c \
-  'from beampipe_pallette.apps import BeampipeIngestApp, BeampipePublishApp; print(BeampipeIngestApp.__name__, BeampipePublishApp.__name__)'
+  'from beampipe_palette.apps import BeampipeIngestApp, BeampipePublishApp; print(BeampipeIngestApp.__name__, BeampipePublishApp.__name__)'
 ```
 
 The expected version and module location must be the same everywhere. Repeat this
@@ -323,7 +323,7 @@ or component graphs as a production substitute.
 
 ## End-to-end verification checklist
 
-1. Verify identical `wallaby-hires` and `beampipe-pallette` versions and import
+1. Verify identical `wallaby-hires` and `beampipe-palette` versions and import
    paths in every executor.
 2. Validate the manifest and apply the graph-specific production/no-download
    preflight in the [manifest contract](manifest-contract.md).

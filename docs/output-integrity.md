@@ -2,7 +2,7 @@
 
 The Setonix production graph finishes with the project-neutral
 `beampipe-publish` DALiuGE application from the separately installed
-`beampipe-pallette` package. Publication is part of the graph, not an operator
+`beampipe-palette` package. Publication is part of the graph, not an operator
 step after DALiuGE.
 
 The Wallaby graph owns only its output policy:
@@ -24,7 +24,7 @@ Its command creates that sentinel only after `linmos` exits successfully. The
 sentinel FileDROP is the publisher's single required completion input, so a
 missing or failed mosaic cannot trigger publication.
 
-The publisher is the native `beampipe_pallette.apps.BeampipePublishApp`
+The publisher is the native `beampipe_palette.apps.BeampipePublishApp`
 barrier application. In EAGLE it exposes only the completion input, inventory
 output, and Wallaby-owned pattern policy; storage, execution identity, Core, and
 handoff settings cannot be edited into the graph. It writes and fsyncs a
@@ -60,11 +60,12 @@ The publisher always creates an execution-attempt namespace:
 <destination-base>/executions/<execution-uuid>/attempt-<retry-count>
 ```
 
-Install `beampipe-pallette` with the same interpreter used by every DALiuGE
+Install `beampipe-palette` with the same interpreter used by every DALiuGE
 executor. When `s3://` is selected, install its S3 extra:
 
 ```bash
-/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.4.0'
+/daliuge/.venv/bin/python -m pip install \
+  'beampipe-palette[s3] @ https://github.com/jbwod/beampipe-palette/releases/download/v0.5.1/beampipe_palette-0.5.1-py3-none-any.whl'
 /daliuge/.venv/bin/beampipe-publish --version
 ```
 

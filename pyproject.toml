@@ -1,12 +1,14 @@
 [project]
 name = "wallaby-hires"
-version = "0.1.18"
+version = "0.1.19"
 description = "DALiuGE components for the Beampipe WALLABY high-resolution imaging workflow"
 authors = [{ name = "ICRAR and WALLABY contributors" }]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10,<3.14"
-dependencies = ["beampipe-pallette>=0.4,<0.5"]
+dependencies = [
+  "beampipe-palette @ https://github.com/jbwod/beampipe-palette/releases/download/v0.5.1/beampipe_palette-0.5.1-py3-none-any.whl",
+]
 
 [project.scripts]
 wallaby_hires = "wallaby_hires.__main__:entrypoint"

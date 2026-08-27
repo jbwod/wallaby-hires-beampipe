@@ -7533,10 +7533,10 @@
             "comment": "",
             "x": 371.4841011414697,
             "y": 1930.5170740705319,
-            "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
-            "commitHash": "0.4.0",
-            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.4.0/daliuge/palettes/beampipe.palette",
-            "dataHash": "6f1983d02156811cb3b860a96c46ab80d7cbb3c4a35e350187690e500d264de4",
+            "repositoryUrl": "https://github.com/jbwod/beampipe-palette",
+            "commitHash": "0.5.1",
+            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-palette/v0.5.1/daliuge/palettes/beampipe.palette",
+            "dataHash": "ccb14ef65cd1d3b85e50957a832b615ae636f4e052c79efc56e4f2f355187157",
             "fields": [
                 {
                     "defaultValue": "",
@@ -7591,7 +7591,7 @@
                     "value": "NOTSET"
                 },
                 {
-                    "defaultValue": "beampipe_pallette.apps.BeampipeIngestApp",
+                    "defaultValue": "beampipe_palette.apps.BeampipeIngestApp",
                     "description": "Installed native DALiuGE manifest-ingest application class.",
                     "encoding": "pickle",
                     "id": "5d8f1456-f812-420e-9e5f-f88defa67216",
@@ -7603,7 +7603,7 @@
                     "readonly": true,
                     "type": "String",
                     "usage": "NoPort",
-                    "value": "beampipe_pallette.apps.BeampipeIngestApp"
+                    "value": "beampipe_palette.apps.BeampipeIngestApp"
                 },
                 {
                     "defaultValue": "beampipe_ingest",

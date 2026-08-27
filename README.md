@@ -87,7 +87,7 @@ metadata describes where the graph is edited and is not an execution pin.
 
 > Production-shaped processing flow under Beampipe: manifest ⮕ staging ⮕ scatter
 > per beam ⮕ imager / imcontsub / linmos ⮕ mosaic ⮕ verified durable publication.
-> The terminal publisher comes from the project-neutral `beampipe-pallette` package.
+> The terminal publisher comes from the project-neutral `beampipe-palette` package.
 
 <p align="center">
   <img src="images/new-graph.png" alt="WALLABY hi-res Beampipe DALiuGE graph" width="900" />
@@ -170,7 +170,7 @@ legacy, and historical graphs contain experimental assumptions and are not an
 operator runbook.
 
 Every current Beampipe graph starts with the native
-`beampipe_pallette.apps.BeampipeIngestApp`. Core injects the manifest into its
+`beampipe_palette.apps.BeampipeIngestApp`. Core injects the manifest into its
 single `manifest_path` setting; the app validates and writes one canonical
 pickle-encoded `manifest_bytes` FileDROP for the existing Wallaby PyFunc
 prestage step. No manifest loader code or credentials are embedded in the

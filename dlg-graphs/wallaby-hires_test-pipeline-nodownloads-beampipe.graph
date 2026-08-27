@@ -6552,10 +6552,10 @@
             "comment": "",
             "x": 546.6110873941341,
             "y": 1910.881164838403,
-            "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
-            "commitHash": "0.4.0",
-            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.4.0/daliuge/palettes/beampipe.palette",
-            "dataHash": "6f1983d02156811cb3b860a96c46ab80d7cbb3c4a35e350187690e500d264de4",
+            "repositoryUrl": "https://github.com/jbwod/beampipe-palette",
+            "commitHash": "0.5.1",
+            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-palette/v0.5.1/daliuge/palettes/beampipe.palette",
+            "dataHash": "ccb14ef65cd1d3b85e50957a832b615ae636f4e052c79efc56e4f2f355187157",
             "fields": [
                 {
                     "defaultValue": "",
@@ -6610,7 +6610,7 @@
                     "value": "NOTSET"
                 },
                 {
-                    "defaultValue": "beampipe_pallette.apps.BeampipeIngestApp",
+                    "defaultValue": "beampipe_palette.apps.BeampipeIngestApp",
                     "description": "Installed native DALiuGE manifest-ingest application class.",
                     "encoding": "pickle",
                     "id": "b2baea4d-04ce-4ee9-88df-9f80a9e23027",
@@ -6622,7 +6622,7 @@
                     "readonly": true,
                     "type": "String",
                     "usage": "NoPort",
-                    "value": "beampipe_pallette.apps.BeampipeIngestApp"
+                    "value": "beampipe_palette.apps.BeampipeIngestApp"
                 },
                 {
                     "defaultValue": "beampipe_ingest",
@@ -7693,10 +7693,10 @@
             "id": "40118985-154f-5dab-b9ee-756ec86337e2",
             "name": "beampipe-publish",
             "description": "Publish project-selected outputs to durable file or S3-compatible storage, verify every object by read-back, emit beampipe-output-inventory/v1, and return the receipt through the session handoff.",
-            "repositoryUrl": "https://github.com/jbwod/beampipe-pallette",
-            "commitHash": "0.4.0",
-            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-pallette/v0.4.0/daliuge/palettes/beampipe.palette",
-            "dataHash": "9e299fe2e241038cf1a4e54e1a22f82819402c944e03d15f67b15dc8607dee9b",
+            "repositoryUrl": "https://github.com/jbwod/beampipe-palette",
+            "commitHash": "0.5.1",
+            "paletteDownloadUrl": "https://raw.githubusercontent.com/jbwod/beampipe-palette/v0.5.1/daliuge/palettes/beampipe.palette",
+            "dataHash": "4d8bf21eaa9a67ad9557fa6484873ebef3924bbb62d546e9ea2b91b81b034fdd",
             "fields": [
                 {
                     "defaultValue": "",
@@ -7766,7 +7766,7 @@
                     "value": "NOTSET"
                 },
                 {
-                    "defaultValue": "beampipe_pallette.apps.BeampipePublishApp",
+                    "defaultValue": "beampipe_palette.apps.BeampipePublishApp",
                     "description": "Installed native DALiuGE publisher application class.",
                     "encoding": "pickle",
                     "id": "c04e0edf-703d-5057-af6a-9e9ccba04be8",
@@ -7778,7 +7778,7 @@
                     "readonly": true,
                     "type": "String",
                     "usage": "NoPort",
-                    "value": "beampipe_pallette.apps.BeampipePublishApp"
+                    "value": "beampipe_palette.apps.BeampipePublishApp"
                 },
                 {
                     "defaultValue": "beampipe_publish",

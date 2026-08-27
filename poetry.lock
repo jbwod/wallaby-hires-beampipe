@@ -18,6 +18,28 @@ docs = ["furo", "jaraco.packaging (>=9.3)", "rst.linker (>=1.9)", "sphinx (>=3.5
 testing = ["jaraco.test", "pytest (!=8.0.*)", "pytest (>=6,!=8.1.*)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)"]
 
 [[package]]
+name = "beampipe-palette"
+version = "0.5.1"
+description = "Project-neutral DALiuGE components for Beampipe"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "beampipe_palette-0.5.1-py3-none-any.whl", hash = "sha256:536d1cca783e6309a0270605d1476db985d1aa9c6c5ab8acbc52ab0aa4f84452"},
+]
+
+[package.dependencies]
+wcmatch = "11.0"
+
+[package.extras]
+s3 = ["boto3 (>=1.38,<2)"]
+test = ["black", "build", "codecov", "coverage", "flake8", "gitchangelog", "isort", "mkdocs", "mypy", "pytest", "pytest-cov", "wheel"]
+
+[package.source]
+type = "url"
+url = "https://github.com/jbwod/beampipe-palette/releases/download/v0.5.1/beampipe_palette-0.5.1-py3-none-any.whl"
+
+[[package]]
 name = "black"
 version = "24.10.0"
 description = "The uncompromising code formatter."
@@ -63,6 +85,18 @@ colorama = ["colorama (>=0.4.3)"]
 d = ["aiohttp (>=3.10)"]
 jupyter = ["ipython (>=7.8.0)", "tokenize-rt (>=3.2.0)"]
 uvloop = ["uvloop (>=0.15.2)"]
+
+[[package]]
+name = "bracex"
+version = "3.0.1"
+description = "Bash style brace expander."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "bracex-3.0.1-py3-none-any.whl", hash = "sha256:6523ad83aeb5098a4ee597cff0f964442ff74e460bd3fafaffab6a013ff2288c"},
+    {file = "bracex-3.0.1.tar.gz", hash = "sha256:4e38e32392e4a4780fe15d644bfc7c8514057cfc3861e060b11814ce829c25e4"},
+]
 
 [[package]]
 name = "build"
@@ -1763,6 +1797,21 @@ files = [
 watchmedo = ["PyYAML (>=3.10)"]
 
 [[package]]
+name = "wcmatch"
+version = "11.0"
+description = "Wildcard/glob file name matcher."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "wcmatch-11.0-py3-none-any.whl", hash = "sha256:3a5977ace27e075eef67eb03d539563f1a19018b62881949a42932cf66926934"},
+    {file = "wcmatch-11.0.tar.gz", hash = "sha256:55d95c2447789712774b198ceec72939e88b5618f1f8f0a9b605bf7740b63b96"},
+]
+
+[package.dependencies]
+bracex = ">=3.0"
+
+[[package]]
 name = "zipp"
 version = "4.1.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -1786,4 +1835,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "150c687336c58648db9f2d84a6ea01484700e89b8392729b27b6eb374a6503e2"
+content-hash = "43672bac6908b19b5e8b1664cc19a268abee12d3f53c412537626585f78a2e38"

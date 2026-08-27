@@ -23,11 +23,11 @@ NO_DOWNLOAD_PUBLISH_PATTERNS_JSON = (
     '["**/image*.10arc.final_mosaic.fits",' '"**/weights*.10arc.final_mosaic.fits"]'
 )
 BEAMPIPE_PALETTE_URL = (
-    "https://raw.githubusercontent.com/jbwod/beampipe-pallette/"
-    "v0.4.0/daliuge/palettes/beampipe.palette"
+    "https://raw.githubusercontent.com/jbwod/beampipe-palette/"
+    "v0.5.1/daliuge/palettes/beampipe.palette"
 )
-INGEST_PALETTE_HASH = "6f1983d02156811cb3b860a96c46ab80d7cbb3c4a35e350187690e500d264de4"
-PUBLISH_PALETTE_HASH = "9e299fe2e241038cf1a4e54e1a22f82819402c944e03d15f67b15dc8607dee9b"
+INGEST_PALETTE_HASH = "ccb14ef65cd1d3b85e50957a832b615ae636f4e052c79efc56e4f2f355187157"
+PUBLISH_PALETTE_HASH = "4d8bf21eaa9a67ad9557fa6484873ebef3924bbb62d546e9ea2b91b81b034fdd"
 DATA_FIXTURE_SUFFIXES = {
     ".csv",
     ".graph",
@@ -169,8 +169,8 @@ def test_setonix_publisher_is_native_terminal_and_translator_compatible():
     assert graph["modelData"]["numLGNodes"] == len(nodes)
     assert publisher["category"] == "DALiuGEApp"
     assert publisher["categoryType"] == "Application"
-    assert fields["dropclass"]["value"] == "beampipe_pallette.apps.BeampipePublishApp"
-    assert publisher["commitHash"] == "0.4.0"
+    assert fields["dropclass"]["value"] == "beampipe_palette.apps.BeampipePublishApp"
+    assert publisher["commitHash"] == "0.5.1"
     assert publisher["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
     assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
     assert set(fields) == {
@@ -290,11 +290,11 @@ def test_no_download_graph_publishes_synthetic_outputs_terminally():
 
     assert graph["modelData"]["numLGNodes"] == len(nodes)
     assert publisher["category"] == "DALiuGEApp"
-    assert publisher["commitHash"] == "0.4.0"
+    assert publisher["commitHash"] == "0.5.1"
     assert publisher["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
     assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
     assert publisher_fields["dropclass"]["value"] == (
-        "beampipe_pallette.apps.BeampipePublishApp"
+        "beampipe_palette.apps.BeampipePublishApp"
     )
     assert publisher_fields["expected_patterns_json"]["value"] == (
         NO_DOWNLOAD_PUBLISH_PATTERNS_JSON
@@ -362,11 +362,11 @@ def test_beampipe_graphs_use_native_hardened_manifest_transport():
         assert graph["modelData"]["numLGNodes"] == len(nodes)
         assert ingest["category"] == "DALiuGEApp"
         assert ingest["categoryType"] == "Application"
-        assert ingest["commitHash"] == "0.4.0"
+        assert ingest["commitHash"] == "0.5.1"
         assert ingest["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
         assert ingest["dataHash"] == INGEST_PALETTE_HASH
         assert ingest_fields["dropclass"]["value"] == (
-            "beampipe_pallette.apps.BeampipeIngestApp"
+            "beampipe_palette.apps.BeampipeIngestApp"
         )
         assert ingest_fields["manifest_path"]["usage"] == "NoPort"
         assert ingest_fields["manifest_bytes"]["usage"] == "OutputPort"
