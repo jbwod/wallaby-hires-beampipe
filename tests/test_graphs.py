@@ -10,6 +10,7 @@ TEST_GRAPH = ROOT / "dlg-graphs/wallaby-hires_test-pipeline-beampipe.graph"
 NO_DOWNLOAD_GRAPH = (
     ROOT / "dlg-graphs/wallaby-hires_test-pipeline-nodownloads-beampipe.graph"
 )
+BEAMPIPE_GRAPHS = (DOCKER_GRAPH, SETONIX_GRAPH, TEST_GRAPH, NO_DOWNLOAD_GRAPH)
 MANIFEST_FIXTURE = ROOT / "wallaby_hires/test_staging_e2e_manifest.json"
 ASKAPSOFT_DIGEST = (
     "csirocass/askapsoft@"
@@ -18,11 +19,12 @@ ASKAPSOFT_DIGEST = (
 PUBLISH_PATTERNS_JSON = (
     '["**/image.*.10arc.final_mosaic.fits",' '"**/weights.*.10arc.final_mosaic.fits"]'
 )
-PUBLISH_PALETTE_URL = (
+BEAMPIPE_PALETTE_URL = (
     "https://raw.githubusercontent.com/jbwod/beampipe-pallette/"
-    "v0.2.0/daliuge/palettes/beampipe.palette"
+    "v0.3.0/daliuge/palettes/beampipe.palette"
 )
-PUBLISH_PALETTE_HASH = "f52909d91d5f581351755cce8e4039e49b686f9d396cef614c58e18897d40a7b"
+INGEST_PALETTE_HASH = "086dd223d6f630bb4edb5cf08b89a02aef13d39234f6f7d0f62d43bf0fb3dbd1"
+PUBLISH_PALETTE_HASH = "05cd5ef5ccd6c3a8de48707e07c931dfc967bdd287b6890efb25ff735ad75648"
 DATA_FIXTURE_SUFFIXES = {
     ".csv",
     ".graph",
@@ -165,8 +167,8 @@ def test_setonix_publisher_is_native_terminal_and_translator_compatible():
     assert publisher["category"] == "DALiuGEApp"
     assert publisher["categoryType"] == "Application"
     assert fields["dropclass"]["value"] == "beampipe_pallette.apps.BeampipePublishApp"
-    assert publisher["commitHash"] == "0.2.0"
-    assert publisher["paletteDownloadUrl"] == PUBLISH_PALETTE_URL
+    assert publisher["commitHash"] == "0.3.0"
+    assert publisher["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
     assert publisher["dataHash"] == PUBLISH_PALETTE_HASH
     assert set(fields) == {
         "completion",
@@ -269,38 +271,76 @@ def test_setonix_publisher_is_native_terminal_and_translator_compatible():
     )
 
 
-def test_setonix_ingest_imports_hardened_pickle_transport_component():
-    graph = _graph(SETONIX_GRAPH)
-    nodes = graph["nodeDataArray"]
-    links = graph["linkDataArray"]
-    ingest = next(node for node in nodes if node["name"] == "beampipe-ingest")
-    manifest_drop = next(node for node in nodes if node["name"] == "manifest_bytes")
-    prestage = next(node for node in nodes if node["name"] == "prestage_manifest_inputs")
-    ingest_fields = {field["name"]: field for field in ingest["fields"]}
-    manifest_fields = {field["name"]: field for field in manifest_drop["fields"]}
-    prestage_fields = {field["name"]: field for field in prestage["fields"]}
+def test_beampipe_graphs_use_native_hardened_manifest_transport():
+    for path in BEAMPIPE_GRAPHS:
+        graph = _graph(path)
+        nodes = graph["nodeDataArray"]
+        links = graph["linkDataArray"]
+        ingest = next(node for node in nodes if node["name"] == "beampipe-ingest")
+        manifest_drop = next(
+            node for node in nodes if node["name"] == "manifest_bytes"
+        )
+        prestage = next(
+            node
+            for node in nodes
+            if any(
+                field["name"] == "func_name"
+                and str(field["value"]).startswith("wallaby_hires.prestage_manifest")
+                for field in node["fields"]
+            )
+        )
+        ingest_fields = {field["name"]: field for field in ingest["fields"]}
+        manifest_fields = {field["name"]: field for field in manifest_drop["fields"]}
+        prestage_fields = {field["name"]: field for field in prestage["fields"]}
 
-    assert ingest_fields["func_name"]["value"] == "beampipe_pallette.beampipe_ingest"
-    assert ingest_fields["func_code"]["value"] == ""
-    assert ingest_fields["output_parser"]["value"] == "pickle"
-    assert ingest_fields["manifest_bytes"]["encoding"] == "pickle"
-    assert manifest_fields["manifest_bytes"]["encoding"] == "pickle"
-    assert prestage_fields["manifest_bytes"]["encoding"] == "pickle"
+        assert graph["modelData"]["numLGNodes"] == len(nodes)
+        assert ingest["category"] == "DALiuGEApp"
+        assert ingest["categoryType"] == "Application"
+        assert ingest["commitHash"] == "0.3.0"
+        assert ingest["paletteDownloadUrl"] == BEAMPIPE_PALETTE_URL
+        assert ingest["dataHash"] == INGEST_PALETTE_HASH
+        assert ingest_fields["dropclass"]["value"] == (
+            "beampipe_pallette.apps.BeampipeIngestApp"
+        )
+        assert ingest_fields["manifest_path"]["usage"] == "NoPort"
+        assert ingest_fields["manifest_bytes"]["usage"] == "OutputPort"
+        assert ingest_fields["manifest_bytes"]["encoding"] == "pickle"
+        assert not {"func_name", "func_code", "input_parser", "output_parser"} & set(
+            ingest_fields
+        )
+        assert manifest_drop["category"] == "File"
+        assert manifest_fields["dropclass"]["value"] == (
+            "dlg.data.drops.file.FileDROP"
+        )
+        assert manifest_fields["filepath"]["value"] == "beampipe-manifest.pickle"
+        assert manifest_fields["manifest_bytes"]["usage"] == "InputOutput"
+        assert manifest_fields["manifest_bytes"]["encoding"] == "pickle"
+        assert prestage_fields["manifest_bytes"]["encoding"] == "pickle"
 
-    ingest_to_manifest = [
-        link
-        for link in links
-        if link["from"] == ingest["id"] and link["to"] == manifest_drop["id"]
-    ]
-    manifest_to_prestage = [
-        link
-        for link in links
-        if link["from"] == manifest_drop["id"] and link["to"] == prestage["id"]
-    ]
-    assert len(ingest_to_manifest) == 1
-    assert ingest_to_manifest[0]["fromPort"] == ingest_fields["manifest_bytes"]["id"]
-    assert len(manifest_to_prestage) == 1
-    assert manifest_to_prestage[0]["toPort"] == prestage_fields["manifest_bytes"]["id"]
+        ingest_to_manifest = [
+            link
+            for link in links
+            if link["from"] == ingest["id"] and link["to"] == manifest_drop["id"]
+        ]
+        manifest_to_prestage = [
+            link
+            for link in links
+            if link["from"] == manifest_drop["id"] and link["to"] == prestage["id"]
+        ]
+        assert len(ingest_to_manifest) == 1
+        assert ingest_to_manifest[0]["fromPort"] == (
+            ingest_fields["manifest_bytes"]["id"]
+        )
+        assert ingest_to_manifest[0]["toPort"] == (
+            manifest_fields["manifest_bytes"]["id"]
+        )
+        assert len(manifest_to_prestage) == 1
+        assert manifest_to_prestage[0]["fromPort"] == (
+            manifest_fields["manifest_bytes"]["id"]
+        )
+        assert manifest_to_prestage[0]["toPort"] == (
+            prestage_fields["manifest_bytes"]["id"]
+        )
 
 
 def test_no_download_graph_selects_structural_manifest_admission_explicitly():

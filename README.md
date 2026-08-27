@@ -169,6 +169,13 @@ Only current `*-beampipe.graph` files are deployment candidates. Component,
 legacy, and historical graphs contain experimental assumptions and are not an
 operator runbook.
 
+Every current Beampipe graph starts with the native
+`beampipe_pallette.apps.BeampipeIngestApp`. Core injects the manifest into its
+single `manifest_path` setting; the app validates and writes one canonical
+pickle-encoded `manifest_bytes` FileDROP for the existing Wallaby PyFunc
+prestage step. No manifest loader code or credentials are embedded in the
+graph.
+
 The no-download test graph has been exercised end to end against a live local
 DALiuGE REST deployment. The current Setonix graph has been statically validated,
 but this revision has **not** completed a live Setonix/SLURM science run because an

@@ -65,7 +65,7 @@ Install `beampipe-pallette` with the same interpreter used by every DALiuGE
 executor. When `s3://` is selected, install its S3 extra:
 
 ```bash
-/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.2.0'
+/daliuge/.venv/bin/python -m pip install 'beampipe-pallette[s3]==0.3.0'
 /daliuge/.venv/bin/beampipe-publish --version
 ```
 
