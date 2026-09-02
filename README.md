@@ -61,28 +61,7 @@ The earlier hi-res path was a manually invoked script (not under version control
   Pawsey images). On Setonix the current graph reads a deployment-managed SIF path
   and bind-mounts the beam directory; the deployment must enforce that SIF's
   immutability.
-
-### Test and deployment graph versions
-
-| | **Test graphs** | **Deploy / Beampipe graphs** |
-|---|-----------------|------------------------------|
-| **imager / imcontsub / linmos / mosaic** | Python functions `imager()`, `imcontsub()`, `linmos()`, `mosaic()` | ASKAPsoft binaries in Singularity (production) |
-| **Downloads** | `*-nodownloads-*` omits both download apps | Full manifest / CASDA staging |
-| **Typical use** | CI, logic checks, Hyades | Setonix production under Beampipe |
-
-Legacy deploy graphs used the `icrar/yanda_imager:0.4` Docker image; current **`*-beampipe.graph`** targets Pawsey Singularity and the layout described below.
-
-The Docker deployment graph pins ASKAPsoft by registry digest. The Setonix graph
-does not contain a user, project allocation, or personal image path; its execution
-environment must provide:
-
-- `BEAMPIPE_SLURM_ACCOUNT` — the approved Pawsey allocation for the run;
-- `BEAMPIPE_ASKAPSOFT_SIF` — an immutable, deployment-managed ASKAPsoft SIF path.
-
-Beampipe project configuration must fetch these graph files by an immutable commit
-URL (or verify a configured SHA-256 digest). The `repoBranch` field in EAGLE model
-metadata describes where the graph is edited and is not an execution pin.
-
+  
 ## Pipeline architecture
 
 > Production-shaped processing flow under Beampipe: manifest ⮕ staging ⮕ scatter
@@ -117,14 +96,7 @@ metadata describes where the graph is edited and is not an execution pin.
 2. **Processed catalogue** — already processed sources.
 3. **Credentials** — CASDA credentials file.
 
-### Processing steps
-
-1. **Catalogue / manifest** — identify sources and beams; build or read a CSV with source name, RA, Dec, `Vsys`, and evaluation file path (`source_identifier`, `sbid` for Beampipe layout).
-2. **`download_data_ms` / `download_data_eval`** — fetch staged tarballs; untar MS into `…/{beamNN}/<name>.ms` (skip if the `.ms` directory already exists); extract evaluation primary-beam FITS under `…/eval/`.
-3. **`process_CSV_str`** — return a list of per-beam parset dictionaries (dynamic keys for cimager, imcontsub, linmos).
-4. **`parset_mixing`** — merge static and dynamic parameter sets for each tool prefix.
-5. **ASKAPsoft** — supply merged parsets to **cimager**, **imcontsub**, and **linmos** (Docker or Singularity per platform).
-6. **Mosaicking** — when all beams for a source are done, **`process_CSV_mosaic_str`** / **`mosaic`** combines linmos outputs into final mosaic cubes and weights.
+<img width="3171" height="2158" alt="diagnn" src="https://github.com/user-attachments/assets/189800a2-bbdd-4459-9aa0-d06cf909ea92" />
 
 ### FITS naming (dynamic parset)
 
@@ -156,33 +128,6 @@ Graphs live under [`dlg-graphs/`](dlg-graphs/). **Prefer `*-beampipe.graph` for 
 | [`wallaby-hires_test-pipeline.graph`](dlg-graphs/wallaby-hires_test-pipeline.graph) | Legacy test pipeline [DEPRECATED] |
 | [`wallaby-hires_test-pipeline-nodownloads.graph`](dlg-graphs/wallaby-hires_test-pipeline-nodownloads.graph) | Legacy test pipeline without downloads [DEPRECATED] |
 
-### Component graphs
-
-| Graph | Description |
-|--------|-------------|
-| [`imager.graph`](dlg-graphs/imager.graph) | Imager only (Docker) |
-| [`imager_singularity.graph`](dlg-graphs/imager_singularity.graph) | Imager only (Singularity) |
-| [`imcontsub.graph`](dlg-graphs/imcontsub.graph) | imcontsub only |
-| [`imager-parset.graph`](dlg-graphs/imager-parset.graph) | Imager / parset experiments |
-
-Only current `*-beampipe.graph` files are deployment candidates. Component,
-legacy, and historical graphs contain experimental assumptions and are not an
-operator runbook.
-
-Every current Beampipe graph starts with the native
-`beampipe_palette.apps.BeampipeIngestApp`. Core injects the manifest into its
-single `manifest_path` setting; the app validates and writes one canonical
-pickle-encoded `manifest_bytes` FileDROP for the existing Wallaby PyFunc
-prestage step. No manifest loader code or credentials are embedded in the
-graph.
-
-An earlier no-download graph was exercised end to end against a live local
-DALiuGE REST deployment. The current 0.4 receipt-handoff revision has a local
-runner and static translation/test evidence but has not yet repeated that live
-smoke. The current Setonix graph has been statically validated, but this revision
-has **not** completed a live Setonix/SLURM science run. See the
-[operator runbook](docs/operator-runbook.md#validation-status) for the exact
-evidence boundary.
 
 ## Python package (`wallaby_hires`)
 
@@ -208,35 +153,10 @@ Output verification and the terminal publisher/Core contract are documented in
 [`docs/output-integrity.md`](docs/output-integrity.md).
 
 ## Installation
-
-Package metadata supports Python 3.10 through 3.13; CI exercises 3.10 and 3.12.
-The distribution name is `wallaby-hires`, while the import package and command are
-`wallaby_hires`. Poetry is not required at runtime.
-
-Install with the **same interpreter that executes DALiuGE applications**. For the
-standard DALiuGE containers used by the local E2E, that command is:
+Install with the **same interpreter that executes DALiuGE applications**.
 
 ```bash
 make PYTHON=/daliuge/.venv/bin/python install
-```
-
-Run it in `dlg-tm`, `dlg-dim`, `dlg-nm1`, and `dlg-nm2`, then verify the package
-with `/daliuge/.venv/bin/python` in every container. Installing with an
-unqualified `pip`, installing into only one manager, or using a separate
-`--prefix` does not make the module importable by all graph executors. A PyPI
-install is valid only after that exact release exists, and should be version
-pinned, for example `wallaby-hires==0.1.6`.
-
-The complete source-install and pinned-wheel procedures, local REST topology,
-Setonix prerequisites, security checklist, verification steps, and troubleshooting
-are in the [operator runbook](docs/operator-runbook.md).
-
-The repository `Containerfile` builds a Python 3.10 utility image whose entrypoint
-is the validation CLI. It does not replace the DALiuGE engine:
-
-```bash
-docker build -f Containerfile -t wallaby-hires:0.1.6 .
-docker run --rm wallaby-hires:0.1.6 --version
 ```
 
 ## Related links
